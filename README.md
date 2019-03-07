@@ -130,7 +130,7 @@ Use these configuration options to control Archon's behavior.
 - `priorityMode`
   - Optional. Default = true
   - This controls how Archon determines the order in which to send blocks to be mined.
-    - `true` - Running in priority mode means that Archon will send new blocks immediately from higher priority chains than are currently being mined, ensuring that your higher priority blocks get mined ASAP. It also means that if multiple blocks are queued, Archon will always start the one from the highest priority chain first.
+    - `true` - Running in priority mode means that Archon will send new blocks immediately from higher priority chains that are currently being mined, ensuring that your higher priority blocks get mined ASAP. It also means that if multiple blocks are queued, Archon will always start the one from the highest priority chain first.
     - `false` - Running in [FIFO](https://en.wikipedia.org/wiki/FIFO_(computing_and_electronics)) mode means that Archon will not interrupt blocks, since all chains are the same priority, and Archon will always start the oldest block from the queue first.
 - `interruptLowerPriorityBlocks`
   - Optional. Default = true
@@ -152,7 +152,7 @@ Use these configuration options to control Archon's behavior.
 - `totalPlotsSizeInTerabytes` *(1 TB = 10^12 bytes)*
 - `totalPlotsSizeInGibibytes` *(1 GiB = 2^30 bytes)*
 - `totalPlotsSizeInGigabytes` *(1 GB = 10^9 bytes)*
-  - These are all optional, the only reason there are 4 of them is for convenience, so you don't have to convert units. Just fill in whichever one you know. **If you decide to fill in more than one of these, Archon will __add them together__ to calculate a total.
+  - These are all optional, the only reason there are 4 of them is for convenience, so you don't have to convert units. Just fill in whichever one you know. **NOTE:** *If you decide to fill in more than one of these, Archon will __add them together__ to calculate a total.*
   - These values are used for calculating dynamic deadlines. If you don't have any specified, dynamic deadlines will be disabled automatically.
   - When HDProxy functionality is implemented, Archon will also use these values for reporting your capacity to HDPool. **WARNING:** *Overstating your capacity to HDPool (aka cheating) is likely to get your account banned and your funds forfeited. Be fair to other miners and be honest, it's in everyone's best interests!*
 - `showHumanReadableDeadlines`
