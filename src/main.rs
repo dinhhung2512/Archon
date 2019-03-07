@@ -223,11 +223,21 @@ fn main() {
         let mut unused_passphrase_warnings = String::from("");
         for inner in &crate::CONF.poc_chains {
             for chain in inner {
-                if chain.numeric_id_to_passphrase.is_some() && (chain.is_pool.unwrap_or_default() || chain.is_bhd.unwrap_or_default() || !chain.enabled.unwrap_or(true)) {
+                if chain.numeric_id_to_passphrase.is_some()
+                    && (chain.is_pool.unwrap_or_default()
+                        || chain.is_bhd.unwrap_or_default()
+                        || !chain.enabled.unwrap_or(true))
+                {
                     if unused_passphrase_warnings.len() > 0 {
                         unused_passphrase_warnings.push_str("\n");
                     }
-                    unused_passphrase_warnings.push_str(format!("    Chain \"{}\" has unused passphrases configured.", &*chain.name).as_str());
+                    unused_passphrase_warnings.push_str(
+                        format!(
+                            "    Chain \"{}\" has unused passphrases configured.",
+                            &*chain.name
+                        )
+                        .as_str(),
+                    );
                     if !chain.enabled.unwrap_or(true) {
                         unused_passphrase_warnings.push_str(" (CHAIN IS DISABLED)");
                     } else if chain.is_pool.unwrap_or_default() {
@@ -355,12 +365,14 @@ fn main() {
         }
         if unused_passphrase_warnings.len() > 0 {
             let border = String::from("------------------------------------------------------------------------------------------");
-            println!("{}\n  {}\n{}\n{}\n      {}\n{}",
+            println!(
+                "{}\n  {}\n{}\n{}\n      {}\n{}",
                 border.red().bold(),
                 "SECURITY WARNING:".red(),
                 border.red().bold(),
                 unused_passphrase_warnings.red(),
-                "You should remove these from your Archon config file for security purposes!".yellow(),
+                "You should remove these from your Archon config file for security purposes!"
+                    .yellow(),
                 border.red().bold(),
             );
         }
@@ -508,7 +520,12 @@ fn query_create_default_config() {
     };
 }
 
-fn print_block_requeued_or_interrupted(chain_name: &str, chain_color: &str, height: u32, requeued: bool) {
+fn print_block_requeued_or_interrupted(
+    chain_name: &str,
+    chain_color: &str,
+    height: u32,
+    requeued: bool,
+) {
     let border = String::from("------------------------------------------------------------------------------------------");
     let color = get_color(chain_color);
     if requeued {
@@ -1045,7 +1062,7 @@ fn format_timespan(timespan: u64) -> String {
 fn censor_account_id(account_id: u64) -> String {
     let mut as_string = account_id.to_string();
     if CONF.mask_account_ids_in_console.unwrap_or_default() {
-        as_string.replace_range(1..as_string.len()-3, "XXXXXXXXXXXXXXXX");
+        as_string.replace_range(1..as_string.len() - 3, "XXXXXXXXXXXXXXXX");
     }
     return as_string;
 }

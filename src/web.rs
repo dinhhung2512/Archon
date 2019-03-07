@@ -1,16 +1,11 @@
 use crate::arbiter;
 use crate::upstream::MiningInfo;
-use rocket::http::{Status, ContentType};
-use rocket::request::{self, Request, FromRequest, LenientForm};
+use rocket::http::ContentType;
+use rocket::request::{self, FromRequest, LenientForm, Request};
 use rocket::response::{self, Responder, Response};
 use rocket::Outcome;
 use std::io::Cursor;
 use std::string::*;
-
-// 404 handler
-/*fn p404(req: &HttpRequest) -> Result<fs::NamedFile> {
-    Ok(fs::NamedFile::open("webresources/404.html")?.set_status_code(StatusCode::NOT_FOUND))
-}*/
 
 fn parse_u64_from_str(txt: &str) -> u64 {
     match txt.parse::<u64>() {
@@ -18,296 +13,8 @@ fn parse_u64_from_str(txt: &str) -> u64 {
         _ => 0,
     }
 }
-/*
-fn try_get_query_string_value(req: &HttpRequest, name: &str) -> (bool, String) {
-    match req.query().get(name) {
-        Some(val) => {
-            return (true, val.clone());
-        }
-        _ => {
-            return (false, String::from(""));
-        }
-    }
-}
 
-fn try_get_submit_nonce_data(req: &HttpRequest) -> (bool, u64, u64, u64, u64) {
-    let block_height = match try_get_query_string_value(req, "blockheight") {
-        (true, val) => parse_u64_from_str(val.as_str()),
-        (false, _) => 0u64,
-    };
-    let account_id = match try_get_query_string_value(req, "accountId") {
-        (true, val) => parse_u64_from_str(val.as_str()),
-        (false, _) => 0u64,
-    };
-    let nonce = match try_get_query_string_value(req, "nonce") {
-        (true, val) => parse_u64_from_str(val.as_str()),
-        (false, _) => 0u64,
-    };
-    let deadline = match try_get_query_string_value(req, "deadline") {
-        (true, val) => parse_u64_from_str(val.as_str()),
-        (false, _) => 0u64,
-    };
-    if account_id > 0 && nonce > 0 && deadline > 0 {
-        return (true, block_height, account_id, nonce, deadline);
-    }
-    return (false, 0u64, 0u64, 0u64, 0u64);
-}
-
-fn api_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
-    match try_get_query_string_value(&req, "requestType") {
-        (true, request_type) => match request_type.to_lowercase().as_str() {
-            "getbestdeadlines" => match try_get_query_string_value(&req, "height") {
-                (true, height_string) => match str::parse::<u32>(height_string.as_str()) {
-                    Ok(height) => {
-                        let best_block_deadlines = arbiter::get_best_deadlines_for_block(height);
-                        let json = serde_json::to_string(&best_block_deadlines).unwrap_or(String::from("{\"result\":\"failure\",\"reason\":\"Couldn't serialize best deadlines for block.\"}"));
-                        result(Ok(HttpResponse::build(StatusCode::OK)
-                            .header(
-                                actix_web::http::header::USER_AGENT,
-                                format!(
-                                    "{} v{}",
-                                    super::uppercase_first(super::APP_NAME),
-                                    super::VERSION
-                                ),
-                            )
-                            .header(actix_web::http::header::CONNECTION, "close")
-                            .content_type("application/json")
-                            .body(json)))
-                    }
-                    Err(_) => result(Ok(HttpResponse::build(StatusCode::OK)
-                        .header(
-                            actix_web::http::header::USER_AGENT,
-                            format!(
-                                "{} v{}",
-                                super::uppercase_first(super::APP_NAME),
-                                super::VERSION
-                            ),
-                        )
-                        .header(actix_web::http::header::CONNECTION, "close")
-                        .content_type("application/json")
-                        .body("{\"result\":\"failure\",\"reason\":\"Couldn't parse height.\"}"))),
-                },
-                (false, _) => {
-                    let best_deadlines = arbiter::get_best_deadlines();
-                    let json = serde_json::to_string(&best_deadlines).unwrap_or(String::from("{\"result\":\"failure\",\"reason\":\"Couldn't serialize best deadlines.\"}"));
-                    result(Ok(HttpResponse::build(StatusCode::OK)
-                        .header(
-                            actix_web::http::header::USER_AGENT,
-                            format!(
-                                "{} v{}",
-                                super::uppercase_first(super::APP_NAME),
-                                super::VERSION
-                            ),
-                        )
-                        .header(actix_web::http::header::CONNECTION, "close")
-                        .content_type("application/json")
-                        .body(json)))
-                }
-            },
-            "getconfig" => {
-                let json = serde_json::to_string(&crate::CONF).unwrap_or(String::from(
-                    "{\"result\":\"failure\",\"reason\":\"Couldn't serialize config.\"}",
-                ));
-                result(Ok(HttpResponse::build(StatusCode::OK)
-                    .header(
-                        actix_web::http::header::USER_AGENT,
-                        format!(
-                            "{} v{}",
-                            super::uppercase_first(super::APP_NAME),
-                            super::VERSION
-                        ),
-                    )
-                    .header(actix_web::http::header::CONNECTION, "close")
-                    .content_type("application/json")
-                    .body(json)))
-            }
-            _ => result(Ok(HttpResponse::build(StatusCode::BAD_REQUEST)
-                .header(
-                    actix_web::http::header::USER_AGENT,
-                    format!(
-                        "{} v{}",
-                        super::uppercase_first(super::APP_NAME),
-                        super::VERSION
-                    ),
-                )
-                .header(actix_web::http::header::CONNECTION, "close")
-                .content_type("application/json")
-                .body(
-                    "{\"result\":\"failure\",\"reason\":\"Invalid request type.\"}",
-                ))),
-        },
-        (false, _) => result(Ok(HttpResponse::build(StatusCode::BAD_REQUEST)
-            .header(
-                actix_web::http::header::USER_AGENT,
-                format!(
-                    "{} v{}",
-                    super::uppercase_first(super::APP_NAME),
-                    super::VERSION
-                ),
-            )
-            .header(actix_web::http::header::CONNECTION, "close")
-            .content_type("application/json")
-            .body(
-                "{\"result\":\"failure\",\"reason\":\"Request Type parameter was not found.\"}",
-            ))),
-    }
-}
-
-// burst api hander
-fn burst_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
-    //println!("{:?}", req);
-    match try_get_query_string_value(&req, "requestType") {
-        (true, request_type) => {
-            match request_type.to_lowercase().as_str() {
-                "getmininginfo" => match super::get_current_mining_info() {
-                    Some(current_mining_info) => result(Ok(HttpResponse::Ok()
-                        .header(
-                            actix_web::http::header::USER_AGENT,
-                            format!(
-                                "{} v{}",
-                                super::uppercase_first(super::APP_NAME),
-                                super::VERSION
-                            ),
-                        )
-                        .header(actix_web::http::header::CONNECTION, "close")
-                        .content_type("application/json")
-                        .body(&current_mining_info.to_json()))),
-                    _ => result(Ok(HttpResponse::Ok()
-                        .header(
-                            actix_web::http::header::USER_AGENT,
-                            format!(
-                                "{} v{}",
-                                super::uppercase_first(super::APP_NAME),
-                                super::VERSION
-                            ),
-                        )
-                        .header(actix_web::http::header::CONNECTION, "close")
-                        .content_type("application/json")
-                        .body("{\"result\":\"failure\",\"reason\":\"No mining info!\"}"))),
-                },
-                "submitnonce" => {
-                    if req.method() == Method::POST {
-                        //println!("{:?}", req);
-                        match try_get_submit_nonce_data(req) {
-                            (true, block_height, account_id, nonce, deadline) => {
-                                let mut user_agent_header = match req.headers().get(header::USER_AGENT) {
-                                    Some(value) => {
-                                        match value.to_str() {
-                                            Ok(value) => value,
-                                            _ => "Unknown",
-                                        }
-                                    },
-                                    _ => "Unknown",
-                                };
-                                // if can't find user agent header, try X-Miner
-                                if user_agent_header == "Unknown" {
-                                    user_agent_header = match req.headers().get("X-Miner") {
-                                        Some(value) => {
-                                            match value.to_str() {
-                                                Ok(value) => value,
-                                                _ => "Unknown",
-                                            }
-                                        },
-                                        _ => "Unknown",
-                                    };
-                                }
-                                let x_deadline_present;
-                                let x_deadline;
-                                match req.headers().get("X-Deadline") {
-                                    Some(x_deadline_header) => {
-                                        match x_deadline_header.to_str() {
-                                            Ok(value) => {
-                                                x_deadline_present = true;
-                                                x_deadline = str::parse::<u64>(value).unwrap_or(u64::max_value());
-                                            },
-                                            _ => {
-                                                x_deadline_present = false;
-                                        x_deadline = u64::max_value();
-                                            }
-                                        };
-                                    },
-                                    _ => {
-                                        x_deadline_present = false;
-                                        x_deadline = u64::max_value();
-                                    }
-                                };
-                                let deadline_to_use;
-                                if deadline == u64::max_value() && x_deadline_present && x_deadline < u64::max_value() {
-                                    deadline_to_use = Some(x_deadline);
-                                } else if deadline < u64::max_value() {
-                                    deadline_to_use = Some(deadline);
-                                } else {
-                                    deadline_to_use = None;
-                                }
-                                crate::arbiter::process_nonce_submission(block_height as u32, account_id, nonce, deadline_to_use, user_agent_header, x_deadline_present)
-                            },
-                            _ => {
-                                result(Ok(HttpResponse::build(StatusCode::BAD_REQUEST)
-                                    .header(
-                                        actix_web::http::header::USER_AGENT,
-                                        format!(
-                                            "{} v{}",
-                                            super::uppercase_first(super::APP_NAME),
-                                            super::VERSION
-                                        ),
-                                    )
-                                    .header(actix_web::http::header::CONNECTION, "close")
-                                    .content_type("application/json")
-                                    .body(
-                                        "{\"result\":\"failure\",\"reason\":\"Required parameters were not present!\"}"
-                                    )))
-                            },
-                        }
-                    } else {
-                        result(Ok(HttpResponse::build(StatusCode::METHOD_NOT_ALLOWED)
-                            .header(
-                                actix_web::http::header::USER_AGENT,
-                                format!(
-                                    "{} v{}",
-                                    super::uppercase_first(super::APP_NAME),
-                                    super::VERSION
-                                ),
-                            )
-                            .header(actix_web::http::header::CONNECTION, "close")
-                            .content_type("application/json")
-                            .body(
-                                "{\"result\":\"failure\",\"reason\":\"Submission of nonces must be done via POST!\"}"
-                            )))
-                    }
-                }
-                _ => result(Ok(HttpResponse::build(StatusCode::BAD_REQUEST)
-                    .header(
-                        actix_web::http::header::USER_AGENT,
-                        format!(
-                            "{} v{}",
-                            super::uppercase_first(super::APP_NAME),
-                            super::VERSION
-                        ),
-                    )
-                    .header(actix_web::http::header::CONNECTION, "close")
-                    .content_type("application/json")
-                    .body(
-                        "{\"result\":\"failure\",\"reason\":\"Invalid request type.\"}",
-                    ))),
-            }
-        }
-        (false, _) => result(Ok(HttpResponse::build(StatusCode::BAD_REQUEST)
-            .header(
-                actix_web::http::header::USER_AGENT,
-                format!(
-                    "{} v{}",
-                    super::uppercase_first(super::APP_NAME),
-                    super::VERSION
-                ),
-            )
-            .header(actix_web::http::header::CONNECTION, "close")
-            .content_type("application/json")
-            .body(
-                "{\"result\":\"failure\",\"reason\":\"Request Type parameter was not found.\"}",
-            ))),
-    }
-}*/
-
+// setup rocket responder for MiningInfo type
 impl<'r> Responder<'r> for MiningInfo {
     fn respond_to(self, _: &Request) -> response::Result<'r> {
         Response::build()
@@ -366,6 +73,7 @@ impl SubmitNonceResponse {
     }
 }
 
+// setup rocket responder for SubmitNonceResponse type
 impl<'r> Responder<'r> for SubmitNonceResponse {
     fn respond_to(self, _: &Request) -> response::Result<'r> {
         Response::build()
@@ -383,6 +91,7 @@ impl<'r> Responder<'r> for SubmitNonceResponse {
     }
 }
 
+// setup rocket RequestGuard to retrieve the user agent or X-Miner header from requests
 struct UserAgent(String);
 
 #[derive(Debug)]
@@ -404,24 +113,31 @@ impl<'a, 'r> FromRequest<'a, 'r> for UserAgent {
             user_agent = UserAgent("".to_string());
         }
         match user_agent.0.len() {
-            0 => Outcome::Failure((Status::BadRequest, UserAgentError::NotPresent)),
-            _ => Outcome::Success(user_agent)
+            0 => Outcome::Success(UserAgent("Unknown".to_string())),
+            _ => Outcome::Success(user_agent),
         }
     }
 }
 
-struct Adjusted(bool);
+// set up rocket RequestGuard to retrieve the X-Deadline header from nonce submission requests
+struct XDeadline(u64);
 
 #[derive(Debug)]
-enum AdjustedError {
+enum XDeadlineError {
     NotPresent,
 }
 
-impl<'a, 'r> FromRequest<'a, 'r> for Adjusted {
-    type Error = AdjustedError;
+impl<'a, 'r> FromRequest<'a, 'r> for XDeadline {
+    type Error = XDeadlineError;
     fn from_request(request: &'a Request<'r>) -> request::Outcome<Self, Self::Error> {
         let x_deadline_header = request.headers().get_one("X-Deadline");
-        Outcome::Success(Adjusted(x_deadline_header.is_some()))
+        match x_deadline_header {
+            Some(x_deadline) => {
+                let x_deadline_u64 = parse_u64_from_str(x_deadline);
+                Outcome::Success(XDeadline(x_deadline_u64))
+            }
+            None => Outcome::Success(XDeadline(0)),
+        }
     }
 }
 
@@ -455,24 +171,35 @@ fn get_mining_info_via_post() -> Option<MiningInfo> {
 #[post("/burst?requestType=submitNonce&<submit_nonce_info..>", rank = 2)]
 fn submit_nonce(
     submit_nonce_info: Option<LenientForm<SubmitNonceInfo>>,
-    user_agent: UserAgent,
-    adjusted: Adjusted,
+    user_agent: UserAgent, // request guard, retrieves user-agent/x-miner header, never returns Outcome::Failure, just "Unknown" if it can't find either
+    x_deadline: XDeadline, // request guard, retrieves X-Deadline header, never returns Outcome::Failure, just 0u64 if it can't find the header
 ) -> Option<SubmitNonceResponse> {
     match submit_nonce_info {
         Some(submit_nonce_info) => {
+            let deadline;
+            let is_adjusted;
+            if submit_nonce_info.deadline > 0 {
+                deadline = submit_nonce_info.deadline;
+                is_adjusted = false;
+            } else {
+                deadline = x_deadline.0;
+                is_adjusted = true;
+            }
             arbiter::process_nonce_submission(
                 submit_nonce_info.block_height.unwrap_or(0),
                 submit_nonce_info.account_id,
                 submit_nonce_info.nonce,
-                Some(submit_nonce_info.deadline),
+                Some(deadline),
                 user_agent.0.as_str(),
-                adjusted.0
+                is_adjusted,
             )
-        },
+        }
         _ => Some(SubmitNonceResponse {
             result: String::from("failure"),
             deadline: None,
-            reason: Some(String::from("Required parameters for nonce submission were not present.")),
+            reason: Some(String::from(
+                "Required parameters for nonce submission were not present.",
+            )),
             error_code: None,
             error_description: None,
         }),

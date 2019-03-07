@@ -26,7 +26,7 @@ pub struct PocChain {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub numeric_id_to_target_deadline: Option<HashMap<u64, u64>>,
-    
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub historical_rounds: Option<u16>,
 

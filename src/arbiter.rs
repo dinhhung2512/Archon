@@ -32,13 +32,15 @@ pub fn thread_arbitrate() {
             if chain.enabled.unwrap_or(true) {
                 let new_sender = mining_info_sender.clone();
                 let new_mining_info_found = new_mining_info_found.clone();
-                let index = super::get_chain_index(
-                    &*chain.url,
-                    &*chain.name,
-                );
+                let index = super::get_chain_index(&*chain.url, &*chain.name);
                 create_chain_nonce_submission_client(index);
                 thread::spawn(move || {
-                    thread_get_mining_info(reqwest::Client::new(), chain.clone(), new_sender, new_mining_info_found);
+                    thread_get_mining_info(
+                        reqwest::Client::new(),
+                        chain.clone(),
+                        new_sender,
+                        new_mining_info_found,
+                    );
                 });
             }
         }
@@ -63,7 +65,7 @@ Websocket messages:
         Response:
             {"cmd":"mining_info","para":{"height":144511,"generationSignature":"8dbe2596f8517c4155e6cac49c7e361b42099bc811c0a1e4cf1f78a33d5076ba","baseTarget":"41514","targetDeadline":31536000,"requestProcessingTime":0}}
 
-    Subscribe to mining info: 
+    Subscribe to mining info:
         {"cmd":"poolmgr.mining_info"}
         Response: None
 
@@ -75,7 +77,7 @@ Websocket messages:
             - capacity = total plots size, in GB
         Response:
             {"cmd":"poolmgr.heartbeat"}
-    
+
     Submit Nonce:
         {"cmd":"poolmgr.submit_nonce","para":{
             "account_key":"ACCOUNT-KEY",
@@ -102,6 +104,7 @@ See FelixBrucker's hdpool-api repo
 https://github.com/felixbrucker/hdpool-api/blob/master/lib/hdpool-mining-api.js
 */
 fn get_hdpool_mining_info() {
+    // to do
 }
 
 fn thread_get_mining_info(
@@ -278,7 +281,9 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
             if index != current_chain_index {
                 if !has_grace_period_elapsed() {
                     if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
-                        requeue_current_block(current_chain.requeue_interrupted_blocks.unwrap_or(true));
+                        requeue_current_block(
+                            current_chain.requeue_interrupted_blocks.unwrap_or(true),
+                        );
                         start_mining_chain(index);
                         return;
                     } // else queue new block
@@ -342,7 +347,12 @@ fn requeue_current_block(do_requeue: bool) {
         chain_queue_status_map.insert(current_chain_index, (requeued_height - 1, requeued_time));
     }
     // print
-    super::print_block_requeued_or_interrupted(&*current_chain.name, &*current_chain.color, requeued_height, do_requeue);
+    super::print_block_requeued_or_interrupted(
+        &*current_chain.name,
+        &*current_chain.color,
+        requeued_height,
+        do_requeue,
+    );
 }
 
 fn has_grace_period_elapsed() -> bool {
@@ -508,7 +518,9 @@ pub fn thread_arbitrate_queue() {
                                 let current_chain_index = get_current_chain_index();
                                 let current_chain =
                                     super::get_chain_from_index(current_chain_index).unwrap();
-                                requeue_current_block(current_chain.requeue_interrupted_blocks.unwrap_or(true));
+                                requeue_current_block(
+                                    current_chain.requeue_interrupted_blocks.unwrap_or(true),
+                                );
                                 start_mining_chain(index);
                             } // else do nothing
                         }
@@ -695,7 +707,7 @@ fn get_target_deadline(
 }
 
 fn forward_nonce_submission(chain_index: u8, url: &str, user_agent_header: &str) -> Option<String> {
-    let chain_nonce_submission_clients =  crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
+    let chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
     match chain_nonce_submission_clients.get(&chain_index) {
         Some(client) => {
             match client
@@ -711,18 +723,14 @@ fn forward_nonce_submission(chain_index: u8, url: &str, user_agent_header: &str)
                 )
                 .send()
             {
-                Ok(mut response) => {
-                    match &response.text() {
-                        Ok(text) => {
-                            Some(text.to_string())
-                        },
-                        Err(_) => None
-                    }
+                Ok(mut response) => match &response.text() {
+                    Ok(text) => Some(text.to_string()),
+                    Err(_) => None,
                 },
-                Err(_) => None
+                Err(_) => None,
             }
-        },
-        _ => None
+        }
+        _ => None,
     }
 }
 
@@ -802,7 +810,9 @@ pub fn process_nonce_submission(
                 }
                 let mut passphrase_str = String::from("");
                 // if solo mining burst, look for a passphrase from config for this account id
-                if !current_chain.is_pool.unwrap_or_default() && !current_chain.is_bhd.unwrap_or_default() {
+                if !current_chain.is_pool.unwrap_or_default()
+                    && !current_chain.is_bhd.unwrap_or_default()
+                {
                     let mut passphrase_set = false;
                     match current_chain.numeric_id_to_passphrase {
                         Some(map) => {
@@ -831,7 +841,9 @@ pub fn process_nonce_submission(
                 }
                 if send_deadline {
                     let mut url = String::from(&*current_chain.url);
-                    if current_chain.is_bhd.unwrap_or_default() || current_chain.is_pool.unwrap_or_default() {
+                    if current_chain.is_bhd.unwrap_or_default()
+                        || current_chain.is_pool.unwrap_or_default()
+                    {
                         url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
                         height, account_id, nonce, unadjusted_deadline).as_str());
                     } else {
@@ -854,7 +866,7 @@ pub fn process_nonce_submission(
                                     failure_message.push_str(text.as_str());
                                 }
                                 break;
-                            },
+                            }
                             _ => {}
                         };
                         attempts += 1;
@@ -869,7 +881,7 @@ pub fn process_nonce_submission(
                         (Local::now() - start_time).num_milliseconds(),
                     );
                     // confirm deadline to miner
-                    return Some(SubmitNonceResponse{
+                    return Some(SubmitNonceResponse {
                         result: String::from("success"),
                         deadline: Some(adjusted_deadline),
                         reason: None,
@@ -879,21 +891,25 @@ pub fn process_nonce_submission(
                 } else if deadline_rejected {
                     // print confirmation failure
                     super::print_nonce_rejected(chain_index, adjusted_deadline);
-                    let (ds_success, response) = SubmitNonceResponse::from_json(failure_message.as_str());
+                    let (ds_success, response) =
+                        SubmitNonceResponse::from_json(failure_message.as_str());
                     if ds_success {
                         Some(response)
                     } else {
-                        return Some(SubmitNonceResponse{
+                        return Some(SubmitNonceResponse {
                             result: String::from("failure"),
                             deadline: None,
-                            reason: Some(format!("Unknown - Upstream returned: {}", failure_message)),
+                            reason: Some(format!(
+                                "Unknown - Upstream returned: {}",
+                                failure_message
+                            )),
                             error_code: None,
                             error_description: None,
                         });
                     }
                 } else {
                     // confirm deadline to miner
-                    return Some(SubmitNonceResponse{
+                    return Some(SubmitNonceResponse {
                         result: String::from("success"),
                         deadline: Some(adjusted_deadline),
                         reason: None,
@@ -903,7 +919,9 @@ pub fn process_nonce_submission(
                 }
             }
             _ => {
-                if !current_chain.is_pool.unwrap_or_default() && !current_chain.is_bhd.unwrap_or_default() {
+                if !current_chain.is_pool.unwrap_or_default()
+                    && !current_chain.is_bhd.unwrap_or_default()
+                {
                     return Some(SubmitNonceResponse{
                         result: String::from("failure"),
                         deadline: None,
@@ -912,10 +930,12 @@ pub fn process_nonce_submission(
                         error_description: None,
                     });
                 } else {
-                    return Some(SubmitNonceResponse{
+                    return Some(SubmitNonceResponse {
                         result: String::from("failure"),
                         deadline: None,
-                        reason: Some(String::from("Your miner must provide a deadline, either adjusted or unadjusted.")),
+                        reason: Some(String::from(
+                            "Your miner must provide a deadline, either adjusted or unadjusted.",
+                        )),
                         error_code: None,
                         error_description: None,
                     });
@@ -923,10 +943,12 @@ pub fn process_nonce_submission(
             }
         };
     }
-    Some(SubmitNonceResponse{
+    Some(SubmitNonceResponse {
         result: String::from("failure"),
         deadline: None,
-        reason: Some(String::from("Could not match nonce submission to a valid chain.")),
+        reason: Some(String::from(
+            "Could not match nonce submission to a valid chain.",
+        )),
         error_code: None,
         error_description: None,
     })
