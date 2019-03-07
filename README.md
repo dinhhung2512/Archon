@@ -221,6 +221,9 @@ showHumanReadableDeadlines: true
 #   Example: ID 12345678901234567890 => 1XXXXXXXXXXXXXXXX890
 maskAccountIdsInConsole: false
 
+# Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
+use24HourTime: false
+
 # Define PoC Chains to mine here, Archon will exit if there are no chains configured, you need at least one.
 # Template:
 #  - name: BURST - VLP [Pool]               # Friendly name to display in the log for this chain.
