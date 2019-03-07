@@ -34,7 +34,7 @@ Trying to be brief, for each chain you instruct Archon to manage, it will:
 ## Defining your mining chains
 Archon supports mining multiple chains in either a `priority mode (default)` or a `first in, first out mode`, you would only use the latter if you didn't value mining any one chain over another.
 
-Your PoC chains are defined in the `archon.yaml` configuration file, [see below](https://github.com/Bloodreaver/Archon/new/master?readme=1#sample-configuration-file).
+Your PoC chains are defined in the `archon.yaml` configuration file, [see below](https://github.com/Bloodreaver/Archon#sample-configuration-file).
 
 Note: You must have at least one PoC Chain defined, or Archon will have nothing to do!
 
