@@ -69,8 +69,7 @@ lazy_static! {
                     exit(0);
                 } else {
                     println!(
-                        "  {} {} {}",
-                        get_time().white(),
+                        "  {} {}",
                         "Config:".red(),
                         "Loaded successfully.".green()
                     );
@@ -79,8 +78,7 @@ lazy_static! {
             }
             Err(_) => {
                 println!(
-                    "  {} {} {}",
-                    get_time().white(),
+                    "  {} {}",
                     "ERROR".red().underline(),
                     "An error was encountered while attempting to open the config file.".red()
                 );
@@ -949,6 +947,9 @@ fn get_dynamic_deadline_for_block(base_target: u32) -> (bool, f64, u64, u64) {
 
 fn get_time() -> String {
     let local_time: DateTime<Local> = Local::now();
+    if crate::CONF.use_24_hour_time.unwrap_or_default() {
+        return local_time.format("%H:%M:%S").to_string();
+    }
     return local_time.format("%I:%M:%S%P").to_string();
 }
 

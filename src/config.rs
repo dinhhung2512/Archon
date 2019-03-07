@@ -123,6 +123,9 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mask_account_ids_in_console: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_24_hour_time: Option<bool>,
 }
 
 impl Config {
@@ -174,6 +177,9 @@ showHumanReadableDeadlines: true
 #   Will mask most of any account IDs in the Archon console, if you're screenshot happy, but don't want people knowing your IDs :)
 #   Example: ID 12345678901234567890 => 1XXXXXXXXXXXXXXXX890
 maskAccountIdsInConsole: false
+
+# Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
+use24HourTime: false
 
 # Define PoC Chains to mine here, Archon will exit if there are no chains configured, you need at least one.
 # Template:
@@ -227,20 +233,17 @@ pocChains:
             Ok(cfg) => (Some(cfg), true),
             Err(parse_err) => {
                 println!(
-                    "{} {} {}",
-                    super::get_time().white(),
+                    "{} {}",
                     "ERROR".red().underline(),
                     "An error was encountered while attempting to parse the config file."
                 );
                 println!(
-                    "{}   {} {}",
-                    super::get_time().white(),
+                    "   {} {}",
                     "MSG".red().underline(),
                     format!("{}", parse_err).red()
                 );
                 println!(
-                    "{}  {} {} {}{}",
-                    super::get_time().white(),
+                    "  {} {} {}{}",
                     "HELP".green().underline(),
                     "Please check your YAML syntax (perhaps paste it into".green(),
                     "yamllint.com".blue(),

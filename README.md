@@ -121,7 +121,51 @@ numericIdToTargetDeadline:
   - Optional. Default = true
   - If you disable this feature, this chain's blocks which get interrupted by a higher priority chain **WILL NOT** be requeued and mined after the higher priority chain finishes.
     - Use case: If this chain is a testnet chain or something you don't really care about mining every block for.
-   
+
+## Global Configuration Options
+Use these configuration options to control Archon's behavior.
+- `gracePeriod`
+  - Required.
+  - **This value is extremely important**, it is used as a timer by Archon to determine how much time must elapse after a block starts before Archon can send the next queued block to be mined. Set it too small, and Archon will instruct your miners to start mining a new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely. Ideally it should be set around 5 seconds longer than your regular scan times, 5 seconds just to give it a safety net.
+- `priorityMode`
+  - Optional. Default = true
+  - This controls how Archon determines the order in which to send blocks to be mined.
+    - `true` - Running in priority mode means that Archon will send new blocks immediately from higher priority chains than are currently being mined, ensuring that your higher priority blocks get mined ASAP. It also means that if multiple blocks are queued, Archon will always start the one from the highest priority chain first.
+    - `false` - Running in [FIFO](https://en.wikipedia.org/wiki/FIFO_(computing_and_electronics)) mode means that Archon will not interrupt blocks, since all chains are the same priority, and Archon will always start the oldest block from the queue first.
+- `interruptLowerPriorityBlocks`
+  - Optional. Default = true
+  - This option is only used in priority mode. If enabled, it will interrupt a currently mining block from a lower-priority chain, in order to mine a new block from a higher priority chain ASAP. The default behavior then is to requeue the lower priority block, but this can be overridden with a per-chain setting.
+- `webServerBindAddress`
+  - Required.
+  - Specify the IP binding you wish Archon to listen for connections on. `0.0.0.0` is universal. `127.0.0.1` is local machine only. You can also use the LAN IP of the host machine if you wish.
+- `webServerPort`
+  - Required.
+  - Specify the Port that Archon will listen for incoming connections from your miners and for serving the Web UI on.
+- `usePocChainColors`
+  - Optional. Default = true.
+  - If enabled, events (new block, deadline submitted etc) pertaining to a defined PoC Chain will be printed in the color specified in that chain's configuration.
+  - If disabled, most of the printing will be in white.
+- `outageStatusUpdateInterval`
+  - Optional. Default = 300 seconds / 5 minutes
+  - This just avoids spamming the console with errors in the event of an outage. It's effectively a cooldown; Archon will only print an error message / status update about the outage when this period of time has elapsed since it printed the last error message / status update.
+- `totalPlotsSizeInTebibytes` *(1 TiB = 2^40 bytes)*
+- `totalPlotsSizeInTerabytes` *(1 TB = 10^12 bytes)*
+- `totalPlotsSizeInGibibytes` *(1 GiB = 2^30 bytes)*
+- `totalPlotsSizeInGigabytes` *(1 GB = 10^9 bytes)*
+  - These are all optional, the only reason there are 4 of them is for convenience, so you don't have to convert units. Just fill in whichever one you know. **If you decide to fill in more than one of these, Archon will __add them together__ to calculate a total.
+  - These values are used for calculating dynamic deadlines. If you don't have any specified, dynamic deadlines will be disabled automatically.
+  - When HDProxy functionality is implemented, Archon will also use these values for reporting your capacity to HDPool. **WARNING:** *Overstating your capacity to HDPool (aka cheating) is likely to get your account banned and your funds forfeited. Be fair to other miners and be honest, it's in everyone's best interests!*
+- `showHumanReadableDeadlines`
+  - Optional. Default = false
+  - Appends a human readable time to deadlines and other durations. Eg: 3345951 **(1m 8d 17:25:51)**
+- `maskAccountIdsInConsole`
+  - Optional. Default = false
+  - Hides all but the first and last three digits in the console of numeric IDs which submit deadlines to Archon. Eg: ID 12345678901234567890 => **1XXXXXXXXXXXXXXXX890**
+    - Use case: None. I'm just paranoid. Use it if you wish :)
+- `use24HourTime`
+  - Optional. Default = false
+  - If enabled, times printed to console will be in 24 hour format.
+
 ## Sample configuration file
 Archon will look in the working directory (usually the same location as the executable) for `archon.yaml`.
 
