@@ -1,6 +1,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Discord](https://img.shields.io/static/v1.svg?logo=discord&label=Archon%20Discord&message=https://discord.gg/ZdVbrMn)](https://discord.gg/ZdVbrMn)
+[![Build Status](https://travis-ci.com/Bloodreaver/Archon.svg?token=xhzsVAjtMKeTMwHgxCUq&branch=master)](https://travis-ci.com/Bloodreaver/Archon)
 # Archon
 A collision free, multi-chain proof of capacity mining proxy.
 
