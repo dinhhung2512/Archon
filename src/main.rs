@@ -1,4 +1,5 @@
 #![feature(vec_remove_item, proc_macro_hygiene, decl_macro)]
+#[cfg(target_os = "windows")]
 use ansi_term;
 use chrono::{DateTime, Local};
 use colored;
@@ -101,9 +102,9 @@ lazy_static! {
 }
 
 fn main() {
-    if cfg!(windows) && !ansi_term::enable_ansi_support().is_ok() {
-        colored::control::set_override(false);
-    }
+    // set up ansi support if user is running windows
+    setup_ansi_support();
+
     let app_name = uppercase_first(APP_NAME);
     println!(
         "{}",
@@ -447,6 +448,16 @@ fn main() {
     let mut blah = String::new();
     std::io::stdin().read_line(&mut blah).expect("FAIL");
 }
+
+#[cfg(target_os = "windows")]
+fn setup_ansi_support() {
+    if !ansi_term::enable_ansi_support().is_ok() {
+        colored::control::set_override(false);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn setup_ansi_support() {}
 
 fn uppercase_first(s: &str) -> String {
     let mut c = s.chars();
