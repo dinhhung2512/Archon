@@ -110,12 +110,9 @@ impl<'a, 'r> FromRequest<'a, 'r> for UserAgent {
         } else if x_miner_header.is_some() && x_miner_header.unwrap().len() > 0 {
             user_agent = UserAgent(x_miner_header.unwrap().to_string());
         } else {
-            user_agent = UserAgent("".to_string());
+            user_agent = UserAgent("Unknown".to_string());
         }
-        match user_agent.0.len() {
-            0 => Outcome::Success(UserAgent("Unknown".to_string())),
-            _ => Outcome::Success(user_agent),
-        }
+        Outcome::Success(user_agent)
     }
 }
 

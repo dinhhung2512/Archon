@@ -57,52 +57,6 @@ pub fn thread_arbitrate() {
     }
 }
 
-/*
-URL: wss://hdminer.hdpool.com
-Websocket messages:
-    Get immediate mining info:
-        {"cmd":"mining_info"}
-        Response:
-            {"cmd":"mining_info","para":{"height":144511,"generationSignature":"8dbe2596f8517c4155e6cac49c7e361b42099bc811c0a1e4cf1f78a33d5076ba","baseTarget":"41514","targetDeadline":31536000,"requestProcessingTime":0}}
-
-    Subscribe to mining info:
-        {"cmd":"poolmgr.mining_info"}
-        Response: None
-
-    Heartbeat (Provide API key and such):
-        {"cmd":"poolmgr.heartbeat","para":{"account_key":"ACCOUNT-KEY","miner_name":"MINER-NAME","miner_mark":"20190221","capacity":CAPACITY-IN-GB}}
-            - Send every 5 seconds
-            - miner_mark = HDProxy version (obviously needs to be fake)
-            - miner_name = Friendly miner name / hostname of PC etc
-            - capacity = total plots size, in GB
-        Response:
-            {"cmd":"poolmgr.heartbeat"}
-
-    Submit Nonce:
-        {"cmd":"poolmgr.submit_nonce","para":{
-            "account_key":"ACCOUNT-KEY",
-            "capacity":CAPACITY-IN-GB,
-            "miner_mark":"20190221",
-            "miner_name":"MINER-NAME",
-            "submit":[{
-                ACCOUNT-ID,
-                HEIGHT,
-                NONCE,
-                DEADLINE,
-                ts: UNIT-TIMESTAMP
-            }],
-        }}
-        Response: None
-
-Subscription messages:
-    On new block, new mining info:
-        {"cmd":"poolmgr.mining_info","para":{"height":144511,"generationSignature":"8dbe2596f8517c4155e6cac49c7e361b42099bc811c0a1e4cf1f78a33d5076ba","baseTarget":"41514","targetDeadline":31536000,"requestProcessingTime":0}}
-
-Might need to find a way to get the current version of the HDProxy string to send with requests automatically.
-
-See FelixBrucker's hdpool-api repo
-https://github.com/felixbrucker/hdpool-api/blob/master/lib/hdpool-mining-api.js
-*/
 fn get_hdpool_mining_info() {
     // to do
 }
@@ -429,7 +383,7 @@ pub fn get_chain_index_from_height(height: u32) -> u8 {
             if chain.enabled.unwrap_or(true) {
                 let index = super::get_chain_index(&*chain.url, &*chain.name);
                 let (current_height, _) = get_latest_chain_info(index);
-                if current_height == height {
+                if current_height == height || current_height == height - 1 {
                     return index;
                 }
             }
@@ -925,7 +879,7 @@ pub fn process_nonce_submission(
                     return Some(SubmitNonceResponse{
                         result: String::from("failure"),
                         deadline: None,
-                        reason: Some(String::from("Indirectly solo mining burst via Archon is not implemented at this time, please configure your miner as if pool mining, and set your passphrase in the chain you wish to solo mine.")),
+                        reason: Some(String::from("Indirectly solo mining burst via Archon is not implemented at this time, please configure your miner as if pool mining, and set your passphrase in the Archon config for the chain you wish to solo mine.")),
                         error_code: None,
                         error_description: None,
                     });

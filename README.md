@@ -9,6 +9,17 @@ A collision free, multi-chain proof of capacity mining proxy.
 - Turns a regular single-chain miner into a multi-chain miner via intelligent and customizable queue management
 - Is compatible with Scavenger and Blago proof-of-capacity (PoC) mining software
 - Like Scavenger, Archon is written using the Rust systems language; memory-safe, cross-platform, low-footprint and stable
+- Features:
+  - Collision free
+  - Can run in *priority* __or__ *first in, first out* queuing modes
+  - Can interrupt lower priority blocks (toggleable)
+  - [Customizable per-chain settings](https://github.com/Bloodreaver/Archon#all-configuration-options-for-poc-chains):
+    - Dynamic Deadlines (auto adjust for network difficulty based on total plot capacity)
+    - Target deadline (for the entire chain)
+    - Target deadline overrides (per ID)
+    - Define passphrases for solo burst mining (per ID)
+    - Requeue interrupted blocks (toggleable)
+    - Adjustable *getMiningInfo* interval
 
 ## What Archon (currently) does not do:
 - Mine
