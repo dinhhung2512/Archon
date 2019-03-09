@@ -5,7 +5,10 @@ extern crate winres;
 fn main() {
     if cfg!(target_os = "windows") {
         let mut res = winres::WindowsResource::new();
-        res.set_icon("archon.ico");
+        res.set_icon("archon.ico")
+        .set("InternalName", "archon.exe")
+        .set("ProductName", "Archon")
+        .set("FileDescription", "Archon");
         res.compile().unwrap();
     }
 }
