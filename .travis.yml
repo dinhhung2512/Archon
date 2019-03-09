@@ -2,19 +2,19 @@ language: rust
 rust:
   - nightly
 matrix:
-include:
-  - os: linux
-    dist: trusty
-    sudo: required
-    addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-          - g++-4.9
-    env:
-        - CC=gcc-4.9      
-  - os: osx
+  include:
+    - os: linux
+      dist: trusty
+      sudo: required
+      addons:
+          apt:
+            sources:
+              - ubuntu-toolchain-r-test
+            packages:
+            - g++-4.9
+      env:
+          - CC=gcc-4.9
+    - os: osx
 script:
   cargo build
 fast_finish: true
