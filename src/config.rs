@@ -254,6 +254,10 @@ pocChains:
         }
     }
 
+    pub fn query_create_default_config() {
+        
+    }
+
     pub fn to_yaml(&self) -> String {
         serde_yaml::to_string(self).unwrap()
     }
