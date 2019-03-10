@@ -15,7 +15,7 @@ pub struct MiningInfo {
     pub generation_signature: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_processing_time: Option<u8>,
-    #[serde(deserialize_with = "string_or_number_to_u64", default)]
+    #[serde(deserialize_with = "string_or_number_to_u64", default = "u64::max_value")]
     pub target_deadline: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scoop: Option<u16>,
