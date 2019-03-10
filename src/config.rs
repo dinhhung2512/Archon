@@ -1,7 +1,10 @@
+use log_derive::logfn;
 use colored::Colorize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
+
+use crate::error::ArchonError;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -228,7 +231,7 @@ pocChains:
     color: blue"#.to_string();
     }
 
-    pub fn try_parse_config(file: File) -> (Option<Self>, bool) {
+    /*pub fn try_parse_config(file: File) -> (Option<Self>, bool) {
         match serde_yaml::from_reader(file) {
             Ok(cfg) => (Some(cfg), true),
             Err(parse_err) => {
@@ -252,13 +255,33 @@ pocChains:
                 (None, false)
             }
         }
+    }*/
+
+    #[logfn(Err = "Error", fmt = "Unable to parse config file: {:?}")]
+    pub fn parse_config(file: File) -> Result<(Self, bool), ArchonError> {
+        match serde_yaml::from_reader(file) {
+            Ok(cfg) => Ok(cfg, true),
+            Err(_) => {
+                Err(ArchonError::new("Please check your YAML syntax (Perhaps paste it into yamllint.com"))
+            }
+        }
     }
 
-    pub fn query_create_default_config() {
-        
+    #[logfn(Err = "Error", fmt = "Error saving default config file: {:?}")]
+    pub fn query_create_default_config() -> Result<(), ArchonError> {
+        Ok(())
     }
 
-    pub fn to_yaml(&self) -> String {
-        serde_yaml::to_string(self).unwrap()
+    #[logfn(Err = "Error", fmt = "Unable to serialize to yaml: {:?}")]
+    pub fn to_yaml(&self) -> Result<String, ArchonError> {
+        //serde_yaml::to_string(self).unwrap()
+        match serde_yaml::to_string(self) {
+            Ok(yaml) => {
+                Ok(yaml)
+            },
+            Err(why) => {
+                Err(ArchonError::new(&format!("{:?}", why)))
+            },
+        }
     }
 }

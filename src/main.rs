@@ -24,6 +24,9 @@ pub mod arbiter;
 pub mod config;
 pub mod upstream;
 pub mod web;
+pub mod error;
+pub mod app;
+
 use crate::config::Config;
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
