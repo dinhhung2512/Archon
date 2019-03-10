@@ -523,15 +523,11 @@ fn start_mining_chain(index: u8) {
                         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
                         chain_queue_status_map.insert(index, (mining_info.height, Local::now()));
                         // print block info
-                        let mut target_deadline = 0u64;
-                        if mining_info.target_deadline.is_some() {
-                            target_deadline = mining_info.target_deadline.unwrap();
-                        }
                         super::print_block_started(
                             mining_info.height,
                             mining_info.base_target,
                             String::from(&*mining_info.generation_signature),
-                            target_deadline,
+                            mining_info.target_deadline,
                             last_block_time,
                         );
                     }
@@ -612,7 +608,7 @@ fn get_target_deadline(
     // get max deadline from upstream if present
     let upstream_target_deadline;
     let mut target_deadline = match get_current_chain_mining_info(chain_index) {
-        Some((mining_info, _)) => mining_info.target_deadline.unwrap_or_default(),
+        Some((mining_info, _)) => mining_info.target_deadline,
         _ => u64::max_value(),
     };
     if target_deadline == 0 {
