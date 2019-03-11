@@ -257,7 +257,12 @@ fn handle_api_get_best_deadlines(req: &HttpRequest) -> FutureResult<HttpResponse
             match str::parse::<u32>(height_str.as_str()) {
                 Ok(height) => {
                     let best_block_deadlines = arbiter::get_best_deadlines_for_block(height);
-                    let json = serde_json::to_string(&best_block_deadlines).unwrap_or(r#"{"result":"failure","reason":"Couldn't serialize best deadlines."}"#.to_string());
+                    let json;
+                    if best_block_deadlines.is_some() {
+                        json = serde_json::to_string(&best_block_deadlines.unwrap()).unwrap_or(r#"{"result":"failure","reason":"Couldn't serialize best deadlines."}"#.to_string());
+                    } else {
+                        json = r#"{"result":"failure","reason":"There are no records for that block height!"}"#.to_string();
+                    }
                     create_response(StatusCode::OK, json)
                 },
                 Err(_) => create_response(StatusCode::OK, r#"{"result":"failure","reason":"Couldn't parse block height."}"#.to_string())
