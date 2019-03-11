@@ -15,9 +15,6 @@ use std::thread;
 extern crate serde_derive;
 
 #[macro_use]
-extern crate rocket;
-
-#[macro_use]
 extern crate lazy_static;
 
 pub mod arbiter;

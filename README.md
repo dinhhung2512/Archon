@@ -38,7 +38,7 @@ Trying to be brief, for each chain you instruct Archon to manage, it will:
     - Do not send Upstream: Asynchronously sends a fake confirmation back to the miner
       - This will be the case if either of the following is true:
         - The submitted deadline is greater than the target deadline for this chain
-        - The submitted deadline is greater than previously submitted deadlines by the accound ID for this block height
+        - The submitted deadline is greater than previously submitted deadlines by the account ID for this block height
     - Send Upstream: Asynchronously sends the deadline submission upstream, and awaits the result, forwarding the result back to the miner
 - Once a second, in a separate thread, processes any blocks waiting to be mined, using logic to determine when to start mining them.
 ```

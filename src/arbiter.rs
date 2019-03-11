@@ -9,7 +9,7 @@ use std::thread;
 
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
-use crate::web::SubmitNonceResponse;
+use crate::web::{SubmitNonceResponse, SubmitNonceErrorResponse};
 
 #[derive(Debug, Clone)]
 struct MiningInfoPollingResult {
@@ -691,7 +691,7 @@ pub fn process_nonce_submission(
     deadline: Option<u64>,
     user_agent_header: &str,
     adjusted: bool,
-) -> Option<SubmitNonceResponse> {
+) -> String {
     // validate data
     // get mining info for chain
     let chain_index = get_chain_index_from_height(block_height); // defaults to the chain being currently mined if it cannot find a height match
@@ -780,13 +780,12 @@ pub fn process_nonce_submission(
                     };
                     if !passphrase_set || passphrase_str.len() == 0 {
                         // send error to miner
-                        return Some(SubmitNonceResponse{
+                        let resp = SubmitNonceResponse{
                             result: String::from("failure"),
                             deadline: None,
                             reason: Some(format!("No passphrase for account ID [{}] was specified in Archon configuration for solo mining burst.", account_id)),
-                            error_code: None,
-                            error_description: None,
-                        });
+                        };
+                        return resp.to_json();
                     }
                 }
                 if send_deadline {
@@ -831,75 +830,73 @@ pub fn process_nonce_submission(
                         (Local::now() - start_time).num_milliseconds(),
                     );
                     // confirm deadline to miner
-                    return Some(SubmitNonceResponse {
+                    let resp = SubmitNonceResponse {
                         result: String::from("success"),
                         deadline: Some(adjusted_deadline),
                         reason: None,
-                        error_code: None,
-                        error_description: None,
-                    });
+                    };
+                    return resp.to_json();
                 } else if deadline_rejected {
                     // print confirmation failure
                     super::print_nonce_rejected(chain_index, adjusted_deadline);
-                    let (ds_success, response) =
-                        SubmitNonceResponse::from_json(failure_message.as_str());
+                    let (ds_success, response) = SubmitNonceResponse::from_json(failure_message.as_str());
                     if ds_success {
-                        Some(response)
+                        return response.to_json();
                     } else {
-                        return Some(SubmitNonceResponse {
-                            result: String::from("failure"),
-                            deadline: None,
-                            reason: Some(format!(
-                                "Unknown - Upstream returned: {}",
-                                failure_message
-                            )),
-                            error_code: None,
-                            error_description: None,
-                        });
+                        let (ds_error_success, _) = SubmitNonceErrorResponse::from_json(failure_message.as_str());
+                        if ds_error_success {
+                            return failure_message;
+                        } else {
+                            let resp = SubmitNonceResponse {
+                                result: String::from("failure"),
+                                deadline: None,
+                                reason: Some(format!(
+                                    "Unknown - Upstream returned: {}",
+                                    failure_message
+                                )),
+                            };
+                            return resp.to_json();
+                        }
                     }
                 } else {
                     // confirm deadline to miner
-                    return Some(SubmitNonceResponse {
+                    let resp = SubmitNonceResponse {
                         result: String::from("success"),
                         deadline: Some(adjusted_deadline),
                         reason: None,
-                        error_code: None,
-                        error_description: None,
-                    });
+                    };
+                    return resp.to_json();
                 }
             }
             _ => {
                 if !current_chain.is_pool.unwrap_or_default()
                     && !current_chain.is_bhd.unwrap_or_default()
                 {
-                    return Some(SubmitNonceResponse{
+                    let resp = SubmitNonceResponse{
                         result: String::from("failure"),
                         deadline: None,
                         reason: Some(String::from("Indirectly solo mining burst via Archon is not implemented at this time, please configure your miner as if pool mining, and set your passphrase in the Archon config for the chain you wish to solo mine.")),
-                        error_code: None,
-                        error_description: None,
-                    });
+                    };
+                    return resp.to_json();
                 } else {
-                    return Some(SubmitNonceResponse {
+                    let resp = SubmitNonceResponse {
                         result: String::from("failure"),
                         deadline: None,
                         reason: Some(String::from(
                             "Your miner must provide a deadline, either adjusted or unadjusted.",
                         )),
-                        error_code: None,
-                        error_description: None,
-                    });
+                    };
+                    return resp.to_json();
                 }
             }
         };
     }
-    Some(SubmitNonceResponse {
+    let resp = SubmitNonceResponse {
         result: String::from("failure"),
         deadline: None,
         reason: Some(String::from(
             "Could not match nonce submission to a valid chain.",
         )),
-        error_code: None,
-        error_description: None,
-    })
+    };
+    return resp.to_json();
 }
