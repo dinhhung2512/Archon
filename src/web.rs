@@ -140,7 +140,7 @@ fn try_get_submit_nonce_data(req: &HttpRequest) -> Option<SubmitNonceInfo> {
     return None;
 }
 
-fn create_response(status_code: actix_web::http::StatusCode, body: String) -> FutureResult<HttpResponse, Error> {
+fn create_response(status_code: StatusCode, body: String) -> FutureResult<HttpResponse, Error> {
     result(Ok(HttpResponse::build(status_code)
         .header(header::USER_AGENT, get_user_agent_str())
         .content_type("application/json")
@@ -242,13 +242,13 @@ fn burst_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
             }
         },
         (false, _) => {
-            create_response(StatusCode::BAD_REQUEST, r#"{"result":"failure","reason":"requestType paramater was not found."#.to_string())
+            create_response(StatusCode::BAD_REQUEST, r#"{"result":"failure","reason":"requestType parameter was not found."#.to_string())
         }
     }
 }
 
 fn handle_invalid_request_type() -> FutureResult<HttpResponse, Error> {
-    create_response(StatusCode::BAD_REQUEST, r#"{"result":"failure","reason":"requestType paramater was not found."#.to_string())
+    create_response(StatusCode::BAD_REQUEST, r#"{"result":"failure","reason":"requestType parameter was not found."#.to_string())
 }
 
 fn handle_api_get_best_deadlines(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
@@ -321,7 +321,7 @@ fn api_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
             }
         },
         (false, _) => {
-            create_response(StatusCode::BAD_REQUEST, r#"{"result":"failure","reason":"requestType paramater was not found."#.to_string())
+            create_response(StatusCode::BAD_REQUEST, r#"{"result":"failure","reason":"requestType parameter was not found."#.to_string())
         }
     }
 }
