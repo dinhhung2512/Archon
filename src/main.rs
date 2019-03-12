@@ -23,6 +23,7 @@ pub mod upstream;
 pub mod web;
 pub mod error;
 pub mod app;
+pub mod utility;
 
 use crate::config::Config;
 use crate::config::PocChain;

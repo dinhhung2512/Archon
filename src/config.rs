@@ -260,7 +260,7 @@ pocChains:
     #[logfn(Err = "Error", fmt = "Unable to parse config file: {:?}")]
     pub fn parse_config(file: File) -> Result<(Self, bool), ArchonError> {
         match serde_yaml::from_reader(file) {
-            Ok(cfg) => Ok(cfg, true),
+            Ok(cfg) => Ok((cfg, true)),
             Err(_) => {
                 Err(ArchonError::new("Please check your YAML syntax (Perhaps paste it into yamllint.com"))
             }
