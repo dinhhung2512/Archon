@@ -432,37 +432,6 @@ fn main() {
     std::io::stdin().read_line(&mut blah).expect("FAIL");
 }
 
-fn uppercase_first(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-    }
-}
-
-fn get_color(col: &str) -> &str {
-    // if using poc chain colors is disabled in config, return white here
-    if !crate::CONF.use_poc_chain_colors.unwrap_or(true) {
-        return "white";
-    }
-    use rand::seq::SliceRandom;
-    let valid_colors = ["green", "yellow", "blue", "magenta", "cyan", "white"];
-    if !valid_colors.contains(&col) {
-        let mut rng = rand::thread_rng();
-        return valid_colors.choose(&mut rng).unwrap();
-    }
-    return &col;
-}
-
-fn get_current_mining_info() -> Option<MiningInfo> {
-    let chain_map = CHAIN_MINING_INFOS.lock().unwrap();
-    let index = CURRENT_CHAIN_INDEX.lock().unwrap();
-    match chain_map.get(&index) {
-        Some((mining_info, _)) => Some(mining_info.clone()),
-        None => None,
-    }
-}
-
 fn query_create_default_config() {
     println!("\n  Would you like to create a default configuration file?");
     println!(
@@ -996,73 +965,4 @@ fn get_mining_info_for_chain(chain_url: &str, chain_name: &str) -> (MiningInfo, 
             return (MiningInfo::empty(), Local::now());
         }
     }
-}
-
-fn format_timespan(timespan: u64) -> String {
-    if !crate::CONF
-        .show_human_readable_deadlines
-        .unwrap_or_default()
-    {
-        return String::from("");
-    }
-    if timespan == 0u64 {
-        return String::from("00:00:00");
-    }
-    let (has_years, years, mdhms) = modulus(timespan, 31536000);
-    let (has_months, months, dhms) = modulus(mdhms, 86400 * 30);
-    let (has_days, days, hms) = modulus(dhms, 86400);
-    let (_, hours, ms) = modulus(hms, 3600);
-    let (_, mins, secs) = modulus(ms, 60);
-    let mut years_str = String::from("");
-    if has_years {
-        years_str.push_str(format!("{}y", years).as_str());
-        years_str.push_str(" ");
-    }
-    let mut months_str = String::from("");
-    if has_months || has_years {
-        months_str.push_str(format!("{}m", months).as_str());
-        months_str.push_str(" ");
-    }
-    let mut days_str = String::from("");
-    if has_days || has_months || has_years {
-        days_str.push_str(format!("{}d", days).as_str());
-    }
-    let hms_str = format!(
-        "{}:{}:{}",
-        pad_left(hours, 2),
-        pad_left(mins, 2),
-        pad_left(secs, 2)
-    );
-    let mut gap_str = String::from("");
-    if has_years || has_months || has_days {
-        gap_str.push_str(" ");
-    }
-    return format!(
-        "{}{}{}{}{}",
-        years_str, months_str, days_str, gap_str, hms_str
-    );
-}
-
-fn censor_account_id(account_id: u64) -> String {
-    let mut as_string = account_id.to_string();
-    if CONF.mask_account_ids_in_console.unwrap_or_default() {
-        as_string.replace_range(1..as_string.len() - 3, "XXXXXXXXXXXXXXXX");
-    }
-    return as_string;
-}
-
-fn modulus(numerator: u64, denominator: u64) -> (bool, u64, u64) {
-    return (
-        numerator / denominator > 0,
-        numerator / denominator,
-        numerator % denominator,
-    );
-}
-
-fn pad_left(num: u64, desired_length: usize) -> String {
-    let mut padded = format!("{}", num);
-    while padded.len() < desired_length {
-        padded = format!("0{}", padded);
-    }
-    return padded;
 }
