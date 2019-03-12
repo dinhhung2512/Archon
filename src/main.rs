@@ -33,24 +33,6 @@ const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 lazy_static! {
-    static ref CHAIN_MINING_INFOS: Arc<Mutex<HashMap<u8, (MiningInfo, DateTime<Local>)>>> = {
-        let chain_mining_infos = HashMap::new();
-        Arc::new(Mutex::new(chain_mining_infos))
-    };
-    // Key = block height, Value = tuple (account_id, best_deadline)
-    static ref BEST_DEADLINES: Arc<Mutex<HashMap<u32, Vec<(u64, u64)>>>> = {
-        let best_deadlines = HashMap::new();
-        Arc::new(Mutex::new(best_deadlines))
-    };
-    static ref CHAIN_QUEUE_STATUS: Arc<Mutex<HashMap<u8, (u32, DateTime<Local>)>>> = {
-        let chain_queue_status = HashMap::new();
-        Arc::new(Mutex::new(chain_queue_status))
-    };
-    static ref CURRENT_CHAIN_INDEX: Arc<Mutex<u8>> = Arc::new(Mutex::new(0u8));
-    static ref CHAIN_NONCE_SUBMISSION_CLIENTS: Arc<Mutex<HashMap<u8, reqwest::Client>>> = {
-        let chain_nonce_submission_clients = HashMap::new();
-        Arc::new(Mutex::new(chain_nonce_submission_clients))
-    };
     #[derive(Serialize)]
     pub static ref CONF: Config = {
         let r: Config = match File::open("archon.yaml") {
@@ -449,16 +431,6 @@ fn main() {
     let mut blah = String::new();
     std::io::stdin().read_line(&mut blah).expect("FAIL");
 }
-
-#[cfg(target_os = "windows")]
-fn setup_ansi_support() {
-    if !ansi_term::enable_ansi_support().is_ok() {
-        colored::control::set_override(false);
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn setup_ansi_support() {}
 
 fn uppercase_first(s: &str) -> String {
     let mut c = s.chars();

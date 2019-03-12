@@ -35,6 +35,7 @@ impl App {
             version: env!("CARGO_PKG_VERSION"),
             conf: conf,
             chain_mining_infos: Arc::new(Mutex::new(HashMap::new())),
+            // Key = block height, Value = tuple (account_id, best_deadline)
             best_deadlines: Arc::new(Mutex::new(HashMap::new())),
             chain_queue_status: Arc::new(Mutex::new(HashMap::new())),
             current_chain_index: Arc::new(Mutex::new(0u8)),
@@ -89,7 +90,12 @@ impl App {
         return &col;
     }
 
-    fn get_current_mining_info () -> Option<MiningInfo> {
-        None
+    fn get_current_mining_info (app: &self) -> Option<MiningInfo> {
+        let chain_map = app.chain_mining_infos.lock().unwrap();
+        let index = app.current_chain_index.lock().unwrap();
+        match chain_map.get(&index) {
+            Some((mining_info, _)) => Some(mining_info.clone()),
+            None => None,
+        }
     }
 }
