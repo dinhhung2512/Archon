@@ -90,6 +90,85 @@ impl App {
         return String::from(col);
     }
 
+    fn print_nonce_accepted(&self, chain_index: u8, deadline: u64, confirmation_time_ms: i64) {
+        let current_chain = self.get_chain_from_index(chain_index).unwrap();
+        let color = self.get_color(&*current_chain.color);
+        println!("            {}                     {}{}", "Confirmed:".green(), deadline.to_string().color(color), format!(" ({}ms)", confirmation_time_ms).color(color));
+    }
+
+    fn print_nonce_rejected(&self, chain_index: u8, deadline: u64) {
+        let current_chain = self.get_chain_from_index(chain_index).unwrap();
+        let color = self.get_color(&*current_chain.color);
+        println!("            {}                      {}", "Rejected:".red(), deadline.to_string().color(color));
+    }
+
+    fn get_network_difficulty_for_block(base_target: u32, block_time_seconds: u16) -> u64 {
+        // BHD = 14660155037u64
+        // BURST = 18325193796u64
+        (4398046511104u64 / block_time_seconds as u64) / base_target as u64
+    }
+
+    fn get_total_plots_size_in_tebibytes(&self) -> f64 {
+        // sum up plot size vars from config
+        let mut plot_size_tebibytes = 0f64;
+        // calculate conversion multipliers
+
+        // decimal to binary first
+        // 1,000,000,000 / 1,099,511,627,667 = 0.0009094947017729282379150390625
+        let gb_to_tib_multiplier = 10f64.powi(9) / 2f64.powi(40);
+        // Proof: For an 8TB (8000 GB) Drive: 8000 * (10^9/2^40) = 7.2759576141834259033203125 TiB
+
+        // 1,000,000,000,000 / 1,099,511,627,776 = 0.9094947017729282379150390625 (or gb_to_tib_multiplier / 1000 :P )
+        let tb_to_tib_multiplier = 10f64.powi(12) / 2f64.powi(40);
+        // Proof: For an 8TB Drive: 8 * (10^12/2^40) = 7.2759576141834259033203125 TiB
+
+        // binary to binary
+        // 1,073,741,824 / 1,099,511,627,776 = 0.0009765625
+        let gib_to_tib_multiplier = 2f64.powi(30) / 2f64.powi(40);
+        // Proof: 1024 GiB: 1024 * (2^30/2^40) = 1.000 TiB
+
+        match self.conf.total_plots_size_in_gigabytes {
+            Some(size_gb) => {
+                plot_size_tebibytes += size_gb * gb_to_tib_multiplier;
+            }
+            _ => {}
+        }
+        match self.conf.total_plots_size_in_terabytes {
+            Some(size_tb) => {
+                plot_size_tebibytes += size_tb * tb_to_tib_multiplier;
+            }
+            _ => {}
+        }
+        match self.conf.total_plots_size_in_gibibytes {
+            Some(size_gib) => {
+                plot_size_tebibytes += size_gib * gib_to_tib_multiplier; // can just do size_gib/1024 to get GiB => TiB, but this way is cooler... :D
+            }
+            _ => {}
+        }
+        match self.conf.total_plots_size_in_tebibytes {
+            Some(size_tib) => {
+                plot_size_tebibytes += size_tib;
+            }
+            _ => {}
+        }
+        return plot_size_tebibytes;
+    }
+
+    #[allow(dead_code)]
+    fn get_dynamic_deadline_for_block(&self, base_target: u32) -> (bool, f64, u64, u64) {
+        let chain_index = self.get_current_chain_index();
+        let current_chain = self.get_chain_from_index(chain_index).unwrap();
+        let net_diff = get_network_difficulty_for_block(base_target, 240) as u64;
+        let plot_size_tebibytes = self.get_total_plots_size_in_tebibytes();
+        // are we using dynamic deadlines for this chain?
+        if current_chain.use_dynamic_deadlines.unwrap_or_default() && plot_size_tebibytes > 0f64 {
+            let dynamic_target_deadline = (720f64 * (net_diff as f64) / plot_size_tebibytes) as u64;
+            (true, plot_size_tebibytes, net_diff, dynamic_target_deadline)
+        } else {
+            (false, 0f64, net_diff, 0u64)
+        }
+    }
+
     fn get_time(&self) -> String {
         let local_time: DateTime<Local> = Local::now();
         if self.conf.use_24_hour_time.unwrap_or_default() {
