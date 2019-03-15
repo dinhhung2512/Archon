@@ -6,8 +6,8 @@ pub fn uppercase_first(s: &str) -> String {
     }
 }
 
-pub fn modulus(numberator: u64, denominator: u64) - > (bool, u64, u64) {
-    (numberator / denominator > 0, numerator / denominator, numberator % denominator,)
+pub fn modulus(numerator: u64, denominator: u64) - > (bool, u64, u64) {
+    (numerator / denominator > 0, numerator / denominator, numerator % denominator,)
 }
 
 pub fn pad_left(num: u64, desired_length: usize) -> String {
