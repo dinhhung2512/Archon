@@ -432,47 +432,6 @@ fn main() {
     std::io::stdin().read_line(&mut blah).expect("FAIL");
 }
 
-fn query_create_default_config() {
-    println!("\n  Would you like to create a default configuration file?");
-    println!(
-        "  {}",
-        "WARNING: THIS WILL OVERWRITE AN EXISTING FILE AND CANNOT BE UNDONE!".yellow()
-    );
-    println!(
-        "  {}",
-        "Type \"y\" and <Enter> to create the file, or just hit <Enter> to exit:".cyan()
-    );
-    let mut resp = String::new();
-    match std::io::stdin().read_line(&mut resp) {
-        Ok(_) => {
-            if resp.trim().to_lowercase() == "y" {
-                let default_config_yaml = Config::create_default();
-                //let default_config_yaml = Config::to_yaml(&default_config);
-                match File::create("archon.yaml") {
-                    Ok(mut file) => {
-                        use std::io::Write;
-                        match file.write_all(&default_config_yaml.as_bytes()) {
-                            Ok(_) => {
-                                println!(
-                                    "  {}",
-                                    "Default config file saved to archon.yaml".green()
-                                );
-                            }
-                            Err(_) => {}
-                        };
-                    }
-                    Err(err) => {
-                        println!("  {}", format!("Error saving config file: {}", err).red())
-                    }
-                };
-            }
-        }
-        Err(_) => {
-            return;
-        }
-    };
-}
-
 fn print_block_requeued_or_interrupted(
     chain_name: &str,
     chain_color: &str,

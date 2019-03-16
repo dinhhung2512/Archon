@@ -56,12 +56,23 @@ impl App {
     fn load_config() -> Result<Config, ArchonError> {
         let c: Config = match File::open("archon.yaml") {
             Ok(file) => {
-                let (conf, err) = Config::try_parse_config(file);
-                if !err {
+                match crate::Config::parse_config(file) {
+                    Ok(c) => {
+                        println!("  {} {}", "Config:".red(), "Loaded successfully.".green());
+                        Ok(c)
+                    }
+                    Err(_) => {
+                        crate::Config::query_create_default_config();
+                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+                        let mut blah = String::new();
+                        std::io::stdin().read_line(&mut blah).expect("FAIL");
+                        exit(0);
+                    }
                 }
             }
             Err(why) => {
-                Err(ArchonError::new(&format!("{:?} - New default config will be created.", why.kind()).red()))
+                // Need to rethink this part here, will get to it asap.
+                Err(ArchonError::new(&format!("{:?} - New default config will be created.", why).red()))
             }
         };
     }

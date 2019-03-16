@@ -258,18 +258,47 @@ pocChains:
     }*/
 
     #[logfn(Err = "Error", fmt = "Unable to parse config file: {:?}")]
-    pub fn parse_config(file: File) -> Result<(Self, bool), ArchonError> {
+    pub fn parse_config(file: File) -> Result<(Self), ArchonError> {
         match serde_yaml::from_reader(file) {
-            Ok(cfg) => Ok((cfg, true)),
+            Ok(cfg) => Ok((cfg)),
             Err(_) => {
-                Err(ArchonError::new("Please check your YAML syntax (Perhaps paste it into yamllint.com"))
+                Err(ArchonError::new("Please check your YAML syntax (Perhaps paste it into yamllint.com)"))
             }
         }
     }
 
-    #[logfn(Err = "Error", fmt = "Error saving default config file: {:?}")]
+    // TODO: This will probably have to be fixed / changed. Not quite sure yet.
+    #[logfn(Err = "Error", fmt = "Error creating new default config file: {:?}")]
     pub fn query_create_default_config() -> Result<(), ArchonError> {
-        Ok(())
+        println!("\n  Would you like to create a default configuration file?");
+        println!("  {}", "WARNING: THIS WILL OVERWRITE AN EXISTING FILE AND CANNOT BE UNDONE!".yellow());
+        println!("  {}", "Type \"y\" and <Enter> to create the file, or just hit <Enter> to exit:".cyan());
+
+        let mut resp = String::new();
+        match std::io::stdin().read_line(&mut resp) {
+            Ok(_) => {
+                if resp.trim().to_lowercase() == "y" {
+                    let default_config_yaml = crate::Config::create_default();
+                    match File::create("archon.yaml") {
+                        Ok(mut file) => {
+                            use std::io::Write;
+                            match file.write_all(&default_config_yaml.as_bytes()) {
+                                Ok(_) => {
+                                    println!("  {}", "Default config file save to archon.yaml".green());
+                                }
+                                Err(_) => {}
+                            };
+                        }
+                        Err(err) => {
+                            Err(ArchonError::new(err))
+                        }
+                    };
+                }
+            }
+            Err(_) => {
+                Ok(())
+            }
+        };
     }
 
     #[logfn(Err = "Error", fmt = "Unable to serialize to yaml: {:?}")]
@@ -283,5 +312,5 @@ pocChains:
                 Err(ArchonError::new(&format!("{:?}", why)))
             },
         }
-    }
+    }w
 }
