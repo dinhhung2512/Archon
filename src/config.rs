@@ -140,9 +140,9 @@ impl Config {
 
 # Grace Period: How long (in seconds) Archon will let blocks mine for.
 # NOTE: This value is extremely important, it is used as a timer by Archon to determine how much time must elapse after a block starts
-# before Archon can send the next queued block to # be mined. Set it too small, and Archon will instruct your miners to start
-# mining a new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely.
-# Ideally it should be set around 5 seconds longer than your regular scan times, 5 seconds just to give it a safety net.
+#   before Archon can send the next queued block to be mined. Set it too small, and Archon will instruct your miners to start mining a 
+#   new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely.
+#   Ideally it should be set around 5 seconds longer than your regular scan times, 5 seconds just to give it a safety net.
 gracePeriod: 20
 
 # Priority Mode: Optional. Default: True.
