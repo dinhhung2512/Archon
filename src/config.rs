@@ -126,6 +126,15 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_24_hour_time: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_old_log_files_to_keep: Option<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logging_level: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_miner_addresses: Option<bool>,
 }
 
 impl Config {
@@ -195,6 +204,18 @@ maskAccountIdsInConsole: false
 
 # Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
 use24HourTime: false
+
+# Num Old Log Files to Keep: Optional. Default: 5.
+#  Only used if loggingLevel is not <Off>.
+numOldLogFilesToKeep: 5
+
+# Logging Level: Optional. Default: Info. Case insensitive.
+#   Valid options: off|trace|debug|info|warn|error
+loggingLevel: info
+
+# Show Miner Addresses: Optional. Default: false.
+#   Shows the IP Address of miner's which submit deadlines.
+showMinerAddresses: false
 
 ######################################################################################################################
 # Define PoC Chains to mine here, Archon will exit if there are no chains configured/enabled, you need at least one! #

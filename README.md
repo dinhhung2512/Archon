@@ -177,6 +177,23 @@ Use these configuration options to control Archon's behavior.
 - `use24HourTime`
   - Optional. Default = false
   - If enabled, times printed to console will be in 24 hour format.
+- `numOldLogFilesToKeep`
+  - Optional. Default = 5
+  - Keeps this many *old* files in the `logs/` folder. A new `archon.log` file will be created and old files rotated every time Archon is launched. If `loggingLevel` = `Off`, this setting is not used. *Note: Archon will __never__ delete files, it will only overwrite log files as per normal, up to the limit specified here.*
+- `loggingLevel`
+  - Optional. Default = `info` *(this is case insensitive)*
+  - Sets how verbose Archon's file logging is.
+    - I recommend leaving this on **info**, as debug and trace levels are *very* verbose and file sizes can get large, quickly, as it doesn't just log what I have specified in Archon, it logs everything that Archon's dependencies log as well.
+  - Valid options:
+    - `Off` - Disable file logging entirely. *Note: Archon will not create a logs directory with this set.*
+    - `Trace` - Show **ALL** logs __(not recommended unless you're troubleshooting)__
+    - `Debug` - Show all logs except Trace logs __(not recommended unless you're troubleshooting)__
+    - `Info` - Recommended. Shows logs with **INFO|WARN|ERROR** levels.
+    - `Warn` - Only show **WARN|ERROR** level logs.
+    - `Error` - Only show **ERROR** level logs.
+- `showMinerAddresses`
+  - Optional. Default = false
+  - Shows the address that deadline submissions are received from.
 
 ## Sample configuration file
 Archon will look in the working directory (usually the same location as the executable) for `archon.yaml`.
@@ -250,6 +267,18 @@ maskAccountIdsInConsole: false
 
 # Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
 use24HourTime: false
+
+# Num Old Log Files to Keep: Optional. Default: 5.
+#  Only used if loggingLevel is not <Off>.
+numOldLogFilesToKeep: 5
+
+# Logging Level: Optional. Default: Info. Case insensitive.
+#   Valid options: off|trace|debug|info|warn|error
+loggingLevel: info
+
+# Show Miner Addresses: Optional. Default: false.
+#   Shows the IP Address of miner's which submit deadlines.
+showMinerAddresses: false
 
 ######################################################################################################################
 # Define PoC Chains to mine here, Archon will exit if there are no chains configured/enabled, you need at least one! #

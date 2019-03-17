@@ -218,6 +218,7 @@ fn handle_submit_nonce(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
                             deadline,
                             miner_software,
                             is_adjusted,
+                            req.connection_info().remote().unwrap_or("").to_string(),
                         )
                     )
                 },
@@ -298,6 +299,9 @@ fn handle_api_get_config(req: &HttpRequest) -> FutureResult<HttpResponse, Error>
                 show_human_readable_deadlines: crate::CONF.show_human_readable_deadlines,
                 mask_account_ids_in_console: crate::CONF.mask_account_ids_in_console,
                 use_24_hour_time: crate::CONF.use_24_hour_time,
+                num_old_log_files_to_keep: crate::CONF.num_old_log_files_to_keep,
+                logging_level: crate::CONF.logging_level.clone(),
+                show_miner_addresses: crate::CONF.show_miner_addresses,
             };
             let mut chains: Vec<PocChain> = Vec::new();
             for inner in &crate::CONF.poc_chains {
