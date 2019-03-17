@@ -1,6 +1,6 @@
 [package]
 name = "archon"
-version = "1.0.4-beta"
+version = "1.0.5-beta"
 authors = ["Bloodreaver https://github.com/Bloodreaver"]
 description = """
 A multi-chain, collision-free proof-of-capacity mining proxy.
@@ -28,6 +28,8 @@ log = "0.4"
 actix = "0.7"
 actix-web = "0.7"
 futures = "0.1"
+fern = "0.5"
+log = "0.4"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ansi_term = "0.11"

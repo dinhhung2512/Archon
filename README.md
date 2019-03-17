@@ -177,6 +177,23 @@ Use these configuration options to control Archon's behavior.
 - `use24HourTime`
   - Optional. Default = false
   - If enabled, times printed to console will be in 24 hour format.
+- `numOldLogFilesToKeep`
+  - Optional. Default = 5
+  - Keeps this many *old* files in the `logs/` folder. A new `archon.log` file will be created and old files rotated every time Archon is launched. If `loggingLevel` = `Off`, this setting is not used. *Note: Archon will __never__ delete files, it will only overwrite log files as per normal, up to the limit specified here.*
+- `loggingLevel`
+  - Optional. Default = `info` *(this is case insensitive)*
+  - Sets how verbose Archon's file logging is.
+    - I recommend leaving this on **info**, as debug and trace levels are *very* verbose and file sizes can get large, quickly, as it doesn't just log what I have specified in Archon, it logs everything that Archon's dependencies log as well.
+  - Valid options:
+    - `Off` - Disable file logging entirely. *Note: Archon will not create a logs directory with this set.*
+    - `Trace` - Show **ALL** logs __(not recommended unless you're troubleshooting)__
+    - `Debug` - Show all logs except Trace logs __(not recommended unless you're troubleshooting)__
+    - `Info` - Recommended. Shows logs with **INFO|WARN|ERROR** levels.
+    - `Warn` - Only show **WARN|ERROR** level logs.
+    - `Error` - Only show **ERROR** level logs.
+- `showMinerAddresses`
+  - Optional. Default = false
+  - Shows the address that deadline submissions are received from.
 
 ## Sample configuration file
 Archon will look in the working directory (usually the same location as the executable) for `archon.yaml`.
@@ -186,7 +203,18 @@ If the file cannot be loaded or is non-existent, Archon will ask you if you woul
 Generated File Contents:
 ```yaml
 ---
-# Grace Period: How long (in seconds) Archon will let blocks mine for - Make this at least as long as your maximum scan times.
+###############################################################################################
+##                             ARCHON DEFAULT CONFIGURATION FILE                             ##
+###############################################################################################
+## For help and guidance, see the github readme at https://github.com/Bloodreaver/Archon     ##
+## You can also join the Discord at https://discord.gg/ZdVbrMn if you need further help! :)  ##
+###############################################################################################
+
+# Grace Period: How long (in seconds) Archon will let blocks mine for.
+# NOTE: This value is extremely important, it is used as a timer by Archon to determine how much time must elapse after a block starts
+#   before Archon can send the next queued block to be mined. Set it too small, and Archon will instruct your miners to start mining a 
+#   new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely.
+#   Ideally it should be set around 5 seconds longer than your regular scan times, 5 seconds just to give it a safety net.
 gracePeriod: 20
 
 # Priority Mode: Optional. Default: True.
@@ -200,10 +228,14 @@ priorityMode: true
 interruptLowerPriorityBlocks: true
 
 # Web Server Bind Address: Which interface to listen for requests from your miners and/or web requests.
+
 # Localhost only - will only listen for requests made from the same machine
 #webServerBindAddress: 127.0.0.1
+
 # LAN IP - Will listen for requests made over your local network to this machine, if this machines LAN IP = 192.168.1.1
+# NOTE: This probably isn't your machine's LAN IP, you'll need to change it!
 #webServerBindAddress: 192.168.1.1
+
 # Universal - bind to all interfaces
 webServerBindAddress: 0.0.0.0
 
@@ -236,44 +268,44 @@ maskAccountIdsInConsole: false
 # Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
 use24HourTime: false
 
-# Define PoC Chains to mine here, Archon will exit if there are no chains configured, you need at least one.
-# Template:
-#  - name: BURST - VLP [Pool]               # Friendly name to display in the log for this chain.
-#    enabled: true                          # Optional. Default: True.
-#    priority: 0                            # Zero-based priority. 0 = highest. Only used if running in Priority mode.
-#                                               NOTE: Must be unique, you can't have multiple chains with the same priority!
-#    isBhd: false                           # Optional. Default: False. Is this chain for BHD / BTCHD / BitcoinHD?
-#    isPool: true                           # Optional. Default: False. Is this chain for pool mining?
-#    url: "http://voiplanparty.com:8124"    # The URL to connect to the chain on.
-#    historicalRounds: 360                  # Optional. Default: 360. Number of rounds to keep best deadlines for, to use in the upcoming web ui.
-#    targetDeadline: 31536000               # Optional. Specify a hard target deadline for this chain (in seconds).
-# Passphrases for different IDs go here, if you are solo mining Burst via Archon.
-#    numericIdToPassphrase:
-#      12345678901234567890: passphrase for this numeric id goes here
-# If you wish to have separate target deadlines for each numeric ID for this chain only, you can specify that here
-# NOTE: Deadlines specified here will OVERRIDE ANY OTHERS except a max deadline received from upstream.
-#    numericIdToTargetDeadline:
-#      12345678901234567890: 86400          # 1 day target deadline for ID 12345678901234567890
-#    color: cyan                            # Color to use for console logging for this chain.
-#                                             Valid colors are: "green", "yellow", "blue", "magenta", "cyan", "white".
-#    getMiningInfoInterval: 3               # Optional. Default: 3. Interval (in seconds) to poll for mining info.
-#    useDynamicDeadlines: true              # Optional. Default: False. If true, will use your total plots size and current network difficulty to calculate a target deadline.
-#    allowLowerBlockHeights: false          # Optional. Default: False. If true, Archon will allow new blocks with a lower height than the previous block, for this chain only.
-#    requeueInterruptedBlocks: true         # Optional. Default: True. Only used in priority mode with interruptLowerPriorityBlocks on.
-#                                               TRUE: Interrupted blocks will be requeued and started again as soon as possible.
-#                                              FALSE: Interrupted blocks will be discarded.
+# Num Old Log Files to Keep: Optional. Default: 5.
+#  Only used if loggingLevel is not <Off>.
+numOldLogFilesToKeep: 5
+
+# Logging Level: Optional. Default: Info. Case insensitive.
+#   Valid options: off|trace|debug|info|warn|error
+loggingLevel: info
+
+# Show Miner Addresses: Optional. Default: false.
+#   Shows the IP Address of miner's which submit deadlines.
+showMinerAddresses: false
+
+######################################################################################################################
+# Define PoC Chains to mine here, Archon will exit if there are no chains configured/enabled, you need at least one! #
+######################################################################################################################
+
+# What follows is a default chain configuration, set up to mine BHD via HDProxy running on the same machine as Archon, and
+# Burst via the VoipLanParty.com pool.
+# A Testnet pool chain is also there, but disabled by default as most people won't wish to mine it.
+######## https://github.com/Bloodreaver/Archon#defining-your-mining-chains ########
+
 pocChains:
+### BHD via HDProxy running on the same machine as Archon ###
   - name: BTCHD - [HDPool]
     priority: 0
     isBhd: true
     isPool: true
     url: "http://localhost:60100"
     color: cyan
+
+### BURST via VLP pool (http://voiplanparty.com) ###
   - name: BURST - VLP [Pool]
     priority: 1
     isPool: true
     url: "http://voiplanparty.com:8124"
     color: magenta
+
+### BURST Testnet Pool - Disabled by default ###
   - name: BURST - TestNet [Pool]
     enabled: false
     priority: 2
