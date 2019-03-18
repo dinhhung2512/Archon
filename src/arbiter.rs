@@ -201,6 +201,8 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
                     if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
                         requeue_current_block(
                             current_chain.requeue_interrupted_blocks.unwrap_or(true),
+                            index,
+                            Some(mining_info_polling_result.clone())
                         );
                         start_mining_chain(index);
                         return;
@@ -248,7 +250,7 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
         } // else queue new block
     }
     // if the code makes it to this point, the new block will be "queued".
-    info!("QUEUE BLOCK - {} #{}", &*current_chain.name, mining_info_polling_result.mining_info.height);
+    info!("QUEUE BLOCK - {} #{}", &*mining_info_polling_result.chain.name, mining_info_polling_result.mining_info.height);
     /*super::print_block_queued(
         &*mining_info_polling_result.chain.name,
         &*mining_info_polling_result.chain.color,
@@ -256,16 +258,38 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
     );*/
 }
 
-fn requeue_current_block(do_requeue: bool) {
+fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info_polling_result: Option<MiningInfoPollingResult>) {
     let current_chain_index = get_current_chain_index();
     let current_chain = super::get_chain_from_index(current_chain_index).unwrap();
     let (requeued_height, requeued_time) = get_queued_chain_info(current_chain_index);
+    let interrupted_by_name;
+    let interrupted_by_height;
+    match mining_info_polling_result {
+        Some(mining_info_polling_result) => {
+            interrupted_by_name = mining_info_polling_result.clone().chain.clone().name;
+            interrupted_by_height = mining_info_polling_result.mining_info.clone().height;
+        },
+        None => {
+            match (super::get_chain_from_index(interrupted_by_index), get_current_chain_mining_info(interrupted_by_index)) {
+                (Some(interrupted_by_chain), Some(interrupted_by_mining_info)) => {
+                    interrupted_by_name = interrupted_by_chain.clone().name;
+                    interrupted_by_height = interrupted_by_mining_info.0.clone().height;
+                }
+                _ => {
+                    interrupted_by_name = String::from("Unknown");
+                    interrupted_by_height = 0;
+                }
+            }
+        }
+    }
     if do_requeue {
+        info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
         // set the queue status for this chain back by 1, thereby "requeuing" it
         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
         chain_queue_status_map.insert(current_chain_index, (requeued_height - 1, requeued_time));
+    } else {
+        info!("INTERRUPT BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
     }
-    info!("REQUEUE BLOCK - {} #{}", &*current_chain.name, requeued_height);
     // print
     super::print_block_requeued_or_interrupted(
         &*current_chain.name,
@@ -319,7 +343,7 @@ fn get_queued_chain_info(index: u8) -> (u32, DateTime<Local>) {
     };
 }
 
-fn get_latest_chain_info(index: u8) -> (u32, DateTime<Local>) {
+pub fn get_latest_chain_info(index: u8) -> (u32, DateTime<Local>) {
     let chain_mining_infos_map = crate::CHAIN_MINING_INFOS.lock().unwrap();
     match chain_mining_infos_map.get(&index) {
         Some((mining_info, block_time)) => {
@@ -440,6 +464,8 @@ pub fn thread_arbitrate_queue() {
                                     super::get_chain_from_index(current_chain_index).unwrap();
                                 requeue_current_block(
                                     current_chain.requeue_interrupted_blocks.unwrap_or(true),
+                                    index,
+                                    None
                                 );
                                 start_mining_chain(index);
                             } // else do nothing
@@ -484,19 +510,19 @@ fn start_mining_chain(index: u8) {
             // get access to chain mining infos
             match get_current_chain_mining_info(index) {
                 Some((mining_info, _)) => {
+                    info!("START BLOCK - Chain #{} - Block #{} - Priority {} | {} | {}", index, mining_info.height, chain.priority, &*chain.name, &*chain.url);
+                    // print block info
+                    super::print_block_started(
+                        mining_info.height,
+                        mining_info.base_target,
+                        String::from(&*mining_info.generation_signature),
+                        mining_info.target_deadline,
+                        last_block_time,
+                    );
                     if mining_info.base_target > 0 {
-                        info!("START BLOCK - Chain #{} - Block #{} - Priority {} | {} | {}", index, mining_info.height, chain.priority, &*chain.name, &*chain.url);
                         // update the queue status for this chain
                         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
                         chain_queue_status_map.insert(index, (mining_info.height, Local::now()));
-                        // print block info
-                        super::print_block_started(
-                            mining_info.height,
-                            mining_info.base_target,
-                            String::from(&*mining_info.generation_signature),
-                            mining_info.target_deadline,
-                            last_block_time,
-                        );
                     }
                 }
                 _ => {}

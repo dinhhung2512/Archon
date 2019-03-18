@@ -810,64 +810,83 @@ fn print_nonce_submission(
     remote_addr: String,
 ) {
     let current_chain = get_chain_from_index(index).unwrap();
-    //let scoop_num = rand::thread_rng().gen_range(0, 4097);
-    let color = get_color(&*current_chain.color);
-    let mut deadline_string = deadline.to_string();
-    if crate::CONF
-        .show_human_readable_deadlines
-        .unwrap_or_default()
-    {
-        deadline_string.push_str(format!(" ({})", format_timespan(deadline)).as_str());
+
+    // check if this is a submission for the actual current chain we're mining
+    let actual_current_chain_index = arbiter::get_current_chain_index();
+    let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
+
+    // give things some time to catch up before we abort printing completely
+    let mut counter = 0;
+    if actual_current_chain_index != index || actual_current_chain_height != height {
+        while counter < 10 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            if actual_current_chain_index == index && actual_current_chain_height == height {
+                break;
+            }
+            counter += 1;
+        }
     }
-    let deadline_color = match deadline {
-        0...3600 => "green",
-        3601...86400 => "yellow",
-        _ => "white",
-    };
-    // remote_addr is an endpoint, need to truncate the port and just leave the hostname/ip
-    let remote_address = match CONF.show_miner_addresses.unwrap_or_default() {
-        true => {
-            let mut addr = remote_addr;
-            let mut port_index = 0;
-            let mut i = 0;
-            for c in addr.chars() {
-                if c == ':' {
-                    port_index = i;
-                    break;
+
+    if actual_current_chain_index == index && actual_current_chain_height == height {
+        //let scoop_num = rand::thread_rng().gen_range(0, 4097);
+        let color = get_color(&*current_chain.color);
+        let mut deadline_string = deadline.to_string();
+        if crate::CONF
+            .show_human_readable_deadlines
+            .unwrap_or_default()
+        {
+            deadline_string.push_str(format!(" ({})", format_timespan(deadline)).as_str());
+        }
+        let deadline_color = match deadline {
+            0...3600 => "green",
+            3601...86400 => "yellow",
+            _ => "white",
+        };
+        // remote_addr is an endpoint, need to truncate the port and just leave the hostname/ip
+        let remote_address = match CONF.show_miner_addresses.unwrap_or_default() {
+            true => {
+                let mut addr = remote_addr;
+                let mut port_index = 0;
+                let mut i = 0;
+                for c in addr.chars() {
+                    if c == ':' {
+                        port_index = i;
+                        break;
+                    }
+                    i += 1;
                 }
-                i += 1;
-            }
-            if port_index > 0 {
-                addr.truncate(port_index);
-            }
-            addr.push_str(": ");
-            addr
-        },
-        false => String::from(""),
-    };
-    if !id_override {
-        println!("    {}{} ==> {}{} ==> {} {}\n        {}                          {}",
-            remote_address.color("white"),
-            user_agent.to_string().color(color).bold(),
-            "Block #".color(color).bold(),
-            height.to_string().color(color),
-            "Numeric ID:".color(color).bold(),
-            censor_account_id(account_id).color(color),
-            "Deadline:".color(color).bold(),
-            deadline_string.color(deadline_color)
-        );
-    } else {
-        println!("    {}{} ==> {}{} ==> {} {}{}\n        {}                          {}",
-            remote_address.color("white"),
-            user_agent.to_string().color(color).bold(),
-            "Block #".color(color).bold(),
-            height.to_string().color(color),
-            "Numeric ID:".color(color).bold(),
-            censor_account_id(account_id).color(color),
-            format!(" [TDL: {}]", target_deadline).red(),
-            "Deadline:".color(color).bold(),
-            deadline_string.color(deadline_color),
-        );
+                if port_index > 0 {
+                    addr.truncate(port_index);
+                }
+                addr.push_str(": ");
+                addr
+            },
+            false => String::from(""),
+        };
+        if !id_override {
+            println!("    {}{} ==> {}{} ==> {} {}\n        {}                          {}",
+                remote_address.color("white"),
+                user_agent.to_string().color(color).bold(),
+                "Block #".color(color).bold(),
+                height.to_string().color(color),
+                "Numeric ID:".color(color).bold(),
+                censor_account_id(account_id).color(color),
+                "Deadline:".color(color).bold(),
+                deadline_string.color(deadline_color)
+            );
+        } else {
+            println!("    {}{} ==> {}{} ==> {} {}{}\n        {}                          {}",
+                remote_address.color("white"),
+                user_agent.to_string().color(color).bold(),
+                "Block #".color(color).bold(),
+                height.to_string().color(color),
+                "Numeric ID:".color(color).bold(),
+                censor_account_id(account_id).color(color),
+                format!(" [TDL: {}]", target_deadline).red(),
+                "Deadline:".color(color).bold(),
+                deadline_string.color(deadline_color),
+            );
+        }
     }
 }
 
@@ -891,21 +910,56 @@ fn get_num_chains_with_priority(priority: u8) -> u8 {
 
 fn print_nonce_accepted(chain_index: u8, deadline: u64, confirmation_time_ms: i64) {
     let current_chain = get_chain_from_index(chain_index).unwrap();
-    let color = get_color(&*current_chain.color);
-    println!("            {}                     {}{}",
-        "Confirmed:".green(),
-        deadline.to_string().color(color),
-        format!(" ({}ms)", confirmation_time_ms).color(color)
-    );
+
+    // check if this is a submission for the actual current chain we're mining
+    let actual_current_chain_index = arbiter::get_current_chain_index();
+
+    // give things some time to catch up before we abort printing completely
+    let mut counter = 0;
+    if actual_current_chain_index != chain_index {
+        while counter < 10 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            if actual_current_chain_index == chain_index {
+                break;
+            }
+            counter += 1;
+        }
+    }
+
+    if actual_current_chain_index == chain_index {
+        let color = get_color(&*current_chain.color);
+        println!("            {}                     {}{}",
+            "Confirmed:".green(),
+            deadline.to_string().color(color),
+            format!(" ({}ms)", confirmation_time_ms).color(color)
+        );
+    }
 }
 
 fn print_nonce_rejected(chain_index: u8, deadline: u64) {
-    let current_chain = get_chain_from_index(chain_index).unwrap();
-    let color = get_color(&*current_chain.color);
-    println!("            {}                      {}",
-        "Rejected:".red(),
-        deadline.to_string().color(color)
-    );
+    // check if this is a submission for the actual current chain we're mining
+    let actual_current_chain_index = arbiter::get_current_chain_index();
+
+    // give things some time to catch up before we abort printing completely
+    let mut counter = 0;
+    if actual_current_chain_index != chain_index {
+        while counter < 10 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            if actual_current_chain_index == chain_index {
+                break;
+            }
+            counter += 1;
+        }
+    }
+
+    if actual_current_chain_index == chain_index {
+        let current_chain = get_chain_from_index(chain_index).unwrap();
+        let color = get_color(&*current_chain.color);
+        println!("            {}                      {}",
+            "Rejected:".red(),
+            deadline.to_string().color(color)
+        );
+    }
 }
 
 fn get_network_difficulty_for_block(base_target: u32, block_time_seconds: u16) -> u64 {
