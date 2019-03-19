@@ -904,13 +904,14 @@ fn get_num_chains_with_priority(priority: u8) -> u8 {
     return 0u8;
 }
 
-fn print_nonce_accepted(chain_index: u8, deadline: u64, confirmation_time_ms: i64) {
+fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confirmation_time_ms: i64) {
     let current_chain = get_chain_from_index(chain_index).unwrap();
 
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
+    let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
 
-    if actual_current_chain_index == chain_index {
+    if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let color = get_color(&*current_chain.color);
         println!("            {}                     {}{}",
             "Confirmed:".green(),
@@ -920,16 +921,18 @@ fn print_nonce_accepted(chain_index: u8, deadline: u64, confirmation_time_ms: i6
     }
 }
 
-fn print_nonce_rejected(chain_index: u8, deadline: u64) {
+fn print_nonce_rejected(chain_index: u8, block_height: u32, deadline: u64, rejection_time_ms: i64) {
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
+    let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
 
-    if actual_current_chain_index == chain_index {
+    if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let current_chain = get_chain_from_index(chain_index).unwrap();
         let color = get_color(&*current_chain.color);
-        println!("            {}                      {}",
+        println!("            {}                      {}{}",
             "Rejected:".red(),
-            deadline.to_string().color(color)
+            deadline.to_string().color(color),
+            format!(" ({}ms)", rejection_time_ms).color(color)
         );
     }
 }
