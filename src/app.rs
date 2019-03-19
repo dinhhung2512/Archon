@@ -165,7 +165,82 @@ impl App {
                     }
                 }
             }
+
+            if (chain_counter == 0) || (self.conf.priority_mode.unwrap_or(true) && multiple_same_priority_chains) {
+                if chain_counter == 0 {
+                    println!("  {} {} {}", self.get_time().white(), "ERROR".red().underline(), "You do not have any PoC Chains enabled. Archon has nothing to do!".yellow());
+                } else {
+                    println!("  {} {} {}", self.get_time().white(), "ERROR".red().underline(), "You have multiple chains configured with the same priority level! Priorities must be unique!".yellow());
+                }
+
+                println!("\n {}", "Execution completed. Press enter to exit.".red().underline());
+
+                let mut blah = String::new();
+                std::io::stdin().read_line(&mut blah).expect("FAIL");
+                exit(0);
+            }
+
+            if unused_passphrase_warnings.len() > 0 {
+                let border = String::from("------------------------------------------------------------------------------------------");
+                println!("{}\n  {}\n{}\n{}\n      {}\n{}",
+                    border.red().bold(),
+                    "SECURITY WARNING:".red(),
+                    border.red().bold(),
+                    unused_passphrase_warnings.red(),
+                    "You should remove these from your Archon config file for security purposes!".yellow(),
+                    border.red().bold());
+            }
+
+            let valid_colors = ["green", "yellow", "blue", "magenta", "cyan", "white"];
+            let mut invalid_color_found = false;
+            for inner in &self.conf.poc_chains {
+                for chain in inner {
+                    if chain.enabled.unwrap_or(true) {
+                        if !valid_colors.contains(&&*chain.color) {
+                            println!("  {} {}", self.get_time().white(), format!("WARNING The {} chain uses the color \"{}\" which is invalid. Will pick a random valid color." , &*chain.name, &*chain.color).yellow());
+                            invalid_color_found = true;
+                        }
+                    }
+                }
+            }
+            if invalid_color_found {
+                let mut valid_colors_str = String::from("");
+                for color in &valid_colors {
+                    valid_colors_str.push_str(format!("{}|", format!("{}", *color).color(*color)).as_str());
+                }
+                valid_colors_str.truncate(valid_colors_str.len() - 1);
+                println!("  {} {}", self.get_time().white(), format!("Valid colors: {}", valid_colors_str));
+            }
+
+            // start mining info polling thread
+            println!("  {} {}", self.get_time().white(), "Starting upstream mining info polling thread.");
+            let mi_thread = thread::spawn(move || {
+                arbiter::thread_arbitrate();
+            });
+
+            // start queue processing thread
+            let queue_proc_thread = thread::spawn(move || {
+                arbiter::thread_arbitrate_queue();
+            });
+
+            // start version check thread
+            let version_check_thread = thread::spawn(move || {
+                thread_check_latest_github_version();
+            });
+
+            println!("  {} {}", self.get_time().white(), "Starting web server.".green());
+            crate::web::start_server();
+            mi_thread.join().expect("Failed to join mining info thread.");
+            queue_proc_thread.join().expect("Failed to join mining info thread.");
+            version_check_thread.join().expect("Failed to join version check thread.");
+        } else {
+            println!("  {} {} {}", self.get_time().white(), "ERROR".red().underline(), "You do not have any PoC Chains configured. Archon has nothing to do!".yellow());
         }
+
+        println!("\n {}", "Execution completed. Press enter to exit.".red().underline());
+
+        let mut blah = String::new();
+        std::io::stdin().read_line(&mut blah).expect("FAIL");
     }
 
     #[logfn(Err = "Error", fmt = "Failed to load config file: {:?}")]
