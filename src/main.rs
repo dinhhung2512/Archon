@@ -826,18 +826,6 @@ fn print_nonce_submission(
     let actual_current_chain_index = arbiter::get_current_chain_index();
     let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
 
-    // give things some time to catch up before we abort printing completely
-    let mut counter = 0;
-    if actual_current_chain_index != index || actual_current_chain_height != height {
-        while counter < 10 {
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            if actual_current_chain_index == index && actual_current_chain_height == height {
-                break;
-            }
-            counter += 1;
-        }
-    }
-
     if actual_current_chain_index == index && actual_current_chain_height == height {
         //let scoop_num = rand::thread_rng().gen_range(0, 4097);
         let color = get_color(&*current_chain.color);
@@ -922,18 +910,6 @@ fn print_nonce_accepted(chain_index: u8, deadline: u64, confirmation_time_ms: i6
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
 
-    // give things some time to catch up before we abort printing completely
-    let mut counter = 0;
-    if actual_current_chain_index != chain_index {
-        while counter < 10 {
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            if actual_current_chain_index == chain_index {
-                break;
-            }
-            counter += 1;
-        }
-    }
-
     if actual_current_chain_index == chain_index {
         let color = get_color(&*current_chain.color);
         println!("            {}                     {}{}",
@@ -947,18 +923,6 @@ fn print_nonce_accepted(chain_index: u8, deadline: u64, confirmation_time_ms: i6
 fn print_nonce_rejected(chain_index: u8, deadline: u64) {
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
-
-    // give things some time to catch up before we abort printing completely
-    let mut counter = 0;
-    if actual_current_chain_index != chain_index {
-        while counter < 10 {
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            if actual_current_chain_index == chain_index {
-                break;
-            }
-            counter += 1;
-        }
-    }
 
     if actual_current_chain_index == chain_index {
         let current_chain = get_chain_from_index(chain_index).unwrap();
