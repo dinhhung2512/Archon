@@ -78,6 +78,93 @@ impl App {
             } else {
                 ""
             }
+
+            println!("  {} {} {}", self.get_time().white(), "Config:".red(), format!("{} {}{}", "Total Plots Size:".green(), format!("{} TiB", total_plots_size_tebibytes).yellow(), plots_zero_warning.red()));
+            println!("  {} {} {}", self.get_time().white(), "Config:".red(), "PoC Chains:".green());
+
+            let mut chain_counter = 0u8;
+            let mut multiple_same_priority_chains = false;
+            let mut unused_passphrase_warnings = String::from("");
+
+            for innter in &self.conf.poc_chains {
+                for chain in inner {
+                    if chain.numberic_id_to_passphrase.is_some() && (chain.is_pool.unwrap_or_default() || chain.is_bhd.unwrap_or_default || !chain.enabled.unwrap_or(true)) {
+                        if unused_passphrase_warnings.len() > 0 {
+                            unused_passphrase_warnings.push_str("\n");
+                        }
+                        unused_passphrase_warnings.push_str(format!("    Chain \"{}\" has unused passphrases configured.", &*chain.name).as_str());
+                        if !chain.enabled.unwrap_or(true) {
+                            unused_passphrase_warnings.push_str(" (CHAIN IS DISABLED)");
+                        } else if chain.is_pool.unwrap_or_default() {
+                            unused_passphrase_warnings.push_str(" (CHAIN IS POOL)");
+                        } else if chain.is_bhd.unwrap_or_default() {
+                            unused_passphrase_warnings.push_str(" (CHAIN IS BHD)");
+                        }
+                    }
+
+                    if chain.enabled.unwrap_or(true) {
+                        if self.get_num_chains_with_priority(chain.priority) > 1 {
+                            multiple_same_priority_chains = true;
+                        }
+
+                        chain_counter += 1;
+                        let chain_tdl = chain.target_deadline.unwrap_or_default();
+                        let mut human_readable_target_deadline = String::from("");
+                        if self.conf.show_human_readable_deadlines.unwrap_or_default() {
+                            human_readable_target_deadline = format!(" ({})", self.format_timespan(chain_tdl));
+                        }
+                        let chain_tdl_str = if chain.use_dynamic_deadlines.unwrap_or_default() {
+                            String::from("Dynamic")
+                        } else if chain_tdl == 0 {
+                            String::from("None")
+                        } else {
+                            format!("{}{}", chain_tdl, human_readable_target_deadline);
+                        }
+
+                        if self.conf.priority_mode.unwrap_or(true) {
+                            if self.conf.interrupt_lower_priority_blocks.unwrap_or(true) {
+                                let mut requeue_str = "Yes";
+                                if !chain.requeue_interrupted_blocks.unwrap_or(true) {
+                                    requeue_str = "No";
+                                }
+
+                                println!("  {} {}  {} {}", self.get_time().white(), "Config:".red(), format!("#{}:", chain_counter).green(), format!("{} {} {} {} {} {} {} {} {} {}",
+                                    "Priority:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", &chain.priority).color(self.get_color(&*chain.color)),
+                                    "Name:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", &*chain.name).color(self.get_color(&*chain.color)),
+                                    "TDL:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", chain_tdl_str).color(self.get_color(&*chain.color)),
+                                    "URL:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", &*chain.url).color(self.get_color(&*chain.color)),
+                                    "Requeue:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", requeue_str).color(self.get_color(&*chain.color)),
+                                ));
+                            } else {
+                                println!("  {} {}  {} {}", self.get_time().white(), "Config:".red(), format!("#{}:", chain_counter).green(), format!("{} {} {} {} {} {} {} {}",
+                                    "Priority:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", &chain.priority).color(self.get_color(&*chain.color)),
+                                    "Name:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", &*chain.name).color(self.get_color(&*chain.color)),
+                                    "TDL:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", chain_tdl_str).color(self.get_color(&*chain.color)),
+                                    "URL:".color(self.get_color(&*chain.color)).bold(),
+                                    format!("{}", &*chain.url).color(self.get_color(&*chain.color)),
+                                ));
+                            }
+                        } else {
+                            println!("  {} {}  {} {}", self.get_time().white(), "Config:".red(), format!("#{}:", chain_counter).green(), format!("{} {} {} {} {} {}",
+                                "Name:".color(self.get_color(&*chain.color)).bold(),
+                                format!("{}", &*chain.name).color(self.get_color(&*chain.color)),
+                                "TDL:".color(self.get_color(&*chain.color)).bold(),
+                                format!("{}", chain_tdl_str).color(self.get_color(&*chain.color)),
+                                "URL:".color(self.get_color(&*chain.color)).bold(),
+                                format!("{}", &*chain.url).color(self.get_color(&*chain.color)),
+                            ));
+                        }
+                    }
+                }
+            }
         }
     }
 
