@@ -839,6 +839,7 @@ pub fn process_nonce_submission(
                     // print nonce confirmation
                     super::print_nonce_accepted(
                         chain_index,
+                        height,
                         adjusted_deadline,
                         confirm_time,
                     );
@@ -853,7 +854,7 @@ pub fn process_nonce_submission(
                     let reject_time = (Local::now() - start_time).num_milliseconds();
                     info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
                     // print confirmation failure
-                    super::print_nonce_rejected(chain_index, adjusted_deadline);
+                    super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time);
                     let (ds_success, response) = SubmitNonceResponse::from_json(failure_message.as_str());
                     if ds_success {
                         return response.to_json();

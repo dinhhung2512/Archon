@@ -369,14 +369,20 @@ fn main() {
         let mi_thread = thread::spawn(move || {
             arbiter::thread_arbitrate();
         });
+        // start queue processing thread
         let queue_proc_thread = thread::spawn(move || {
             arbiter::thread_arbitrate_queue();
+        });
+        // start version check thread
+        let version_check_thread = thread::spawn(move || {
+            thread_check_latest_githib_version();
         });
 
         println!("  {} {}", get_time().white(), "Starting web server.".green() );
         web::start_server();
         mi_thread.join().expect("Failed to join mining info thread.");
         queue_proc_thread.join().expect("Failed to join queue processing thread.");
+        version_check_thread.join().expect("Failed to join version check thread.");
     } else {
         println!("  {} {} {}", get_time().white(), "ERROR".red().underline(), "You do not have any PoC Chains configured. Archon has nothing to do!".yellow());
     }
@@ -448,6 +454,49 @@ fn setup_logging() {
             },
             Err(_) => {}
         }
+    }
+}
+
+fn thread_check_latest_githib_version() {
+    use semver::Version;
+    let current_version = Version::parse(VERSION).unwrap();
+    // load github api - https://api.github.com/repos/Bloodreaver/Archon/releases
+    let version_check_client = reqwest::Client::new();
+    loop {
+        let response: Result<serde_json::Value, String> = version_check_client.get("https://api.github.com/repos/Bloodreaver/Archon/releases")
+            .send()
+            .map(|mut response| {
+                response.text().map(|json| {
+                    serde_json::from_str(&json).unwrap()
+                }).unwrap()
+            })
+            .map_err(|e| e.to_string() );
+        match response {
+            Ok(data) => {
+                let mut tag_name_string = data[0]["tag_name"].to_string().clone();
+                tag_name_string = tag_name_string.trim_matches('"').to_string();
+                if tag_name_string.starts_with("v") {
+                    tag_name_string = tag_name_string.trim_start_matches("v").to_string();
+                }
+                match Version::parse(tag_name_string.as_str()) {
+                    Ok(latest) => {
+                        if current_version < latest {
+                            let border = "------------------------------------------------------------------------------------------";
+                            let headline = "  NEW VERSION AVAILABLE ==> ";
+                            println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new release available on GitHub. Please update ASAP!\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
+                                border, headline, tag_name_string, border, border).red());
+                            info!("VERSION CHECK: v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
+                        } else {
+                            info!("VERSION CHECK: Up to date. (Current = {}, Latest = {})", VERSION, tag_name_string);
+                        }
+                    },
+                    Err(why) => warn!("VERSION CHECK: Unable to parse github version. (Current = {}, GH Tag = {} | Error={:?})", VERSION, tag_name_string, why),
+                }
+            },
+            Err(why) => warn!("VERSION CHECK: Unable to check github version: {:?}", why)
+        };
+        // sleep for 30 mins
+        std::thread::sleep(std::time::Duration::from_secs(1800));
     }
 }
 
@@ -815,18 +864,6 @@ fn print_nonce_submission(
     let actual_current_chain_index = arbiter::get_current_chain_index();
     let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
 
-    // give things some time to catch up before we abort printing completely
-    let mut counter = 0;
-    if actual_current_chain_index != index || actual_current_chain_height != height {
-        while counter < 10 {
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            if actual_current_chain_index == index && actual_current_chain_height == height {
-                break;
-            }
-            counter += 1;
-        }
-    }
-
     if actual_current_chain_index == index && actual_current_chain_height == height {
         //let scoop_num = rand::thread_rng().gen_range(0, 4097);
         let color = get_color(&*current_chain.color);
@@ -908,25 +945,14 @@ fn get_num_chains_with_priority(priority: u8) -> u8 {
 =======
 }
 
-fn print_nonce_accepted(chain_index: u8, deadline: u64, confirmation_time_ms: i64) {
+fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confirmation_time_ms: i64) {
     let current_chain = get_chain_from_index(chain_index).unwrap();
 
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
+    let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
 
-    // give things some time to catch up before we abort printing completely
-    let mut counter = 0;
-    if actual_current_chain_index != chain_index {
-        while counter < 10 {
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            if actual_current_chain_index == chain_index {
-                break;
-            }
-            counter += 1;
-        }
-    }
-
-    if actual_current_chain_index == chain_index {
+    if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let color = get_color(&*current_chain.color);
         println!("            {}                     {}{}",
             "Confirmed:".green(),
@@ -936,28 +962,18 @@ fn print_nonce_accepted(chain_index: u8, deadline: u64, confirmation_time_ms: i6
     }
 }
 
-fn print_nonce_rejected(chain_index: u8, deadline: u64) {
+fn print_nonce_rejected(chain_index: u8, block_height: u32, deadline: u64, rejection_time_ms: i64) {
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
+    let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
 
-    // give things some time to catch up before we abort printing completely
-    let mut counter = 0;
-    if actual_current_chain_index != chain_index {
-        while counter < 10 {
-            std::thread::sleep(std::time::Duration::from_millis(250));
-            if actual_current_chain_index == chain_index {
-                break;
-            }
-            counter += 1;
-        }
-    }
-
-    if actual_current_chain_index == chain_index {
+    if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let current_chain = get_chain_from_index(chain_index).unwrap();
         let color = get_color(&*current_chain.color);
-        println!("            {}                      {}",
+        println!("            {}                      {}{}",
             "Rejected:".red(),
-            deadline.to_string().color(color)
+            deadline.to_string().color(color),
+            format!(" ({}ms)", rejection_time_ms).color(color)
         );
     }
 }
