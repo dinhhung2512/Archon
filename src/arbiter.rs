@@ -23,7 +23,7 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
     drop(chain_nonce_submission_clients);
 }
 
-pub fn thread_arbitrate() {
+pub fn thread_arbitrate(cnsc: Arc<Mutex<HashMap<u8, reqwest::Client>>>) {
     let new_mining_info_found = Arc::new(AtomicBool::new(false));
     let (mining_info_sender, mining_info_receiver) = mpsc::channel();
     // start polling for mining info for each chain

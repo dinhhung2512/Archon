@@ -1,13 +1,20 @@
 use std::collections::HashMap;
 use std::fs::File;
+use std::process::exit;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread;
 
+use chrono::{DateTime, Local};
+use colored;
 use colored::Colorize;
+use fern;
 use log_derive::logfn;
 
-use crate::Config;
+use crate::config::Config;
+use crate::config::PocChain;
 use crate::error::ArchonError;
+use crate::upstream::MiningInfo;
 
 pub struct App {
     app_name: &'static str,
@@ -45,13 +52,12 @@ impl App {
 
     pub fn start(&self) {
         self.setup_ansi_support();
-        self.app_name = crate::utility::uppercase_first(APP_NAME)
         self.setup_logging();
 
         info!("{} v{} started", self.app_name, VERSION);
 
         println!("{}", format!(" {} v{} - POWER OVERWHELMING!", self.app_name, self.version).cyan().bold());
-        println!(" {} {} | {} {}", "Created by".cyan().bold(), "Ayaenah Bloodreaver".cyan().underline(), "Discord Invited:".red(), "https://discord.gg/ZdVbrMn".yellow(),);
+        println!(" {} {} | {} {}", "Created by".cyan().bold(), "Ayaenah Bloodreaver".cyan().underline(), "Discord Invite:".red(), "https://discord.gg/ZdVbrMn".yellow(),);
         println!("    {} {}\n      {}\n", "With special thanks to:".red().bold(), "Haitch | Avanth | Karralie | Romanovski".red(), "Thanks guys <3".magenta(),);
 
         if self.conf.poc_chains.is_some() {
@@ -77,7 +83,7 @@ impl App {
                 " (Warning: Dynamic deadlines require an accurate plot size. Dynamic Deadlines are disabled.)"
             } else {
                 ""
-            }
+            };
 
             println!("  {} {} {}", self.get_time().white(), "Config:".red(), format!("{} {}{}", "Total Plots Size:".green(), format!("{} TiB", total_plots_size_tebibytes).yellow(), plots_zero_warning.red()));
             println!("  {} {} {}", self.get_time().white(), "Config:".red(), "PoC Chains:".green());
@@ -119,7 +125,7 @@ impl App {
                             String::from("None")
                         } else {
                             format!("{}{}", chain_tdl, human_readable_target_deadline);
-                        }
+                        };
 
                         if self.conf.priority_mode.unwrap_or(true) {
                             if self.conf.interrupt_lower_priority_blocks.unwrap_or(true) {
@@ -215,12 +221,12 @@ impl App {
             // start mining info polling thread
             println!("  {} {}", self.get_time().white(), "Starting upstream mining info polling thread.");
             let mi_thread = thread::spawn(move || {
-                arbiter::thread_arbitrate();
+                crate::arbiter::thread_arbitrate();
             });
 
             // start queue processing thread
             let queue_proc_thread = thread::spawn(move || {
-                arbiter::thread_arbitrate_queue();
+                crate::arbiter::thread_arbitrate_queue();
             });
 
             // start version check thread
