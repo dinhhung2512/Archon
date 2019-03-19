@@ -6,7 +6,7 @@ pub fn uppercase_first(s: &str) -> String {
     }
 }
 
-pub fn modulus(numerator: u64, denominator: u64) - > (bool, u64, u64) {
+pub fn modulus(numerator: u64, denominator: u64) -> (bool, u64, u64) {
     (numerator / denominator > 0, numerator / denominator, numerator % denominator,)
 }
 

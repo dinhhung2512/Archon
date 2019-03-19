@@ -336,5 +336,5 @@ pocChains:
                 Err(ArchonError::new(&format!("{:?}", why)))
             },
         }
-    }w
+    }
 }

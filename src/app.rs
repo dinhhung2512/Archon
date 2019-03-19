@@ -45,36 +45,65 @@ impl App {
 
     pub fn start(&self) {
         self.setup_ansi_support();
+        self.app_name = crate::utility::uppercase_first(APP_NAME)
+        self.setup_logging();
+
+        info!("{} v{} started", self.app_name, VERSION);
 
         println!("{}", format!(" {} v{} - POWER OVERWHELMING!", self.app_name, self.version).cyan().bold());
         println!(" {} {} | {} {}", "Created by".cyan().bold(), "Ayaenah Bloodreaver".cyan().underline(), "Discord Invited:".red(), "https://discord.gg/ZdVbrMn".yellow(),);
         println!("    {} {}\n      {}\n", "With special thanks to:".red().bold(), "Haitch | Avanth | Karralie | Romanovski".red(), "Thanks guys <3".magenta(),);
 
+        if self.conf.poc_chains.is_some() {
+            println!("  {} {} {}", get_time().white(), "Config:".red(), format!("{} {}", "Web Server Binding:".green(), format!("http://{}:{}", self.conf.web_server_bind_address, self.conf.web_server_port).yellow()));
+
+            if self.conf.priority_mode.unwrap_or(true) {
+                println!("  {} {} {}", self.get_time().white(), "Config:".red(), format!("{} {}", "Queuing mode:".green(), "Priority".yellow()));
+
+                if self.conf.interrupt_lower_priority_blocks.unwrap_or(true) {
+                    println!("  {} {} {}", self.get_time().white(), "Config:".red(), format!("{} {}", "Interrupt Lower Priority Blocks:".green(), "Yes".yellow()));
+                } else {
+                    // intterupt lower priority blocks off
+                    println!("  {} {} {}", self.get_time().white(), "Config:".red(), format!("{} {}", "Interrupt Lower Priorty Blocks:".green(), "No".yellow()));
+                }
+            } else {
+                println!("  {} {} {}", self.get_time().white(), "Config:".red(), format!("{} {}", "Queuing Mode:".green(), "First In, First Out".yellow()));
+            }
+
+            println!("  {} {} {}", self.get_time().white(), "Config:".red(), format!("{} {}", "Grace Period:".green(), format!("{} seconds", self.conf.grace_period).tellow()));
+
+            let total_plots_size_tebibytes = self.get_total_plots_size_in_tebibytes();
+            let plots_zero_warning = if total_plot_size_tebibytes == 0f64 {
+                " (Warning: Dynamic deadlines require an accurate plot size. Dynamic Deadlines are disabled.)"
+            } else {
+                ""
+            }
+        }
     }
 
     #[logfn(Err = "Error", fmt = "Failed to load config file: {:?}")]
     fn load_config() -> Result<Config, ArchonError> {
-        let c: Config = match File::open("archon.yaml") {
-            Ok(file) => {
-                match crate::Config::parse_config(file) {
-                    Ok(c) => {
-                        println!("  {} {}", "Config:".red(), "Loaded successfully.".green());
-                        Ok(c)
-                    }
-                    Err(_) => {
-                        crate::Config::query_create_default_config();
-                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+        let c: Result<Config, ArchonError> = File::open("archon.yaml")
+            .map(|file| {
+                crate::config::Config::parse_config(file)
+                    .map_err(|_| {
+                        crate::config::Config::query_create_default_config();
+                        println!("\n {}", "execution completed. Press enter to exit.".red().underline());
                         let mut blah = String::new();
-                        std::io::stdin().read_line(&mut blah).expect("FAIL");
+                        std::io::stdin().red_line(&mut blah).expect("FAIL");
                         exit(0);
-                    }
-                }
-            }
-            Err(why) => {
-                // Need to rethink this part here, will get to it asap.
-                Err(ArchonError::new(&format!("{:?} - New default config will be created.", why).red()))
-            }
-        };
+                    })
+            })
+            .map_err(|why| {
+                println!("  {} {}", "ERROR".red().underline(), "An error was encountered while attempting to open the config file.".red());
+                crate::config::Config::query_create_default_config();
+                println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+                let mut blah = String::new();
+                std::io::stdin().read_line(&mut blah).expect("FAIL");
+                exit(0);
+            });
+
+        c
     }
 
     #[cfg(target_os = "windows")]
@@ -86,6 +115,55 @@ impl App {
 
     #[cfg(not(target_os = "windows"))]
     fn setup_ansi_support() {}
+
+    fn setup_logging(&self) {
+        let logging_level = self.conf.logging_level.clone().unwrap_or(String::from("info")).to_lowercase();
+        let log_level = match logging_level.as_str() {
+            "off" => log::LevelFilter::Off,
+            "trace" => log::LevelFilter::Trace,
+            "debug" => log::LevelFilter::Debug,
+            "info" => log::LevelFilter::Info,
+            "warn" => log::LevelFilter::Warn,
+            "error" => log::LevelFilter::Error,
+            _ => log::LevelFilter::Info,
+        };
+
+        if log_level != log::LevelFilter::Off {
+            // create logs directory
+            if std::fs::create_dir("logs").is_ok() {}
+            // grab number of files to keep in rotation from loaded config
+            let num_old_files = self.conf.num_old_log_files_to_keep.unwrap_or(5);
+            if num_old_files > 0 { // if 0 Archon will just keep overwriting the same file
+                if num_old_files > 1 {
+                    // do rotation
+                    for i in 1..num_old_files {
+                        let rotation = num_old_files - i;
+                        if std::fs::rename(format!("logs/{}.{}.log", APP_NAME, rotation), format!("logs/{}.{}.log", APP_NAME, rotation - 1)).is_ok() {}
+                    }
+                }
+                if std::fs::rename(format!("logs/{}.log", APP_NAME), format!("logs/{}.1.log", APP_NAME)).is_ok() {}
+            }
+            fern::log_file(format!("logs/{}.log", APP_NAME))
+                .map(|log_file| {
+                    fern::Dispatch::new()
+                        .format(move |out, message, record| {
+                            out.finish(format_args!(
+                                "{time} [{level:level_width$}] {target:target_width$}\t> {msg}",
+                                time = Local::now().format("%Y-%m-%d %H:%M:%S"),
+                                level = record.level(),
+                                target = record.target(),
+                                msg = message,
+                                level_width = 5,
+                                target_width = 30,
+                            ))
+                        })
+                        .level(log_level)
+                        .chain(log_file)
+                        .apply().map(|_| {}).map_err(|_| {});
+                })
+                .map_err(|_| {})
+        }
+    }
 
     fn get_color(&self, col: &str) -> String {
         // if using poc chain colors is disabled i nconfig, return white here.
