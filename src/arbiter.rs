@@ -37,7 +37,7 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
                 "Invalid Header Data".parse().unwrap()
             },
         };
-        default_headers.insert("AccountKey", account_key_header_value);
+        default_headers.insert("X-Account", account_key_header_value);
     }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
     chain_nonce_submission_clients.insert(

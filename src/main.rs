@@ -227,8 +227,10 @@ fn main() {
                 let account_key = chain.account_key.clone().unwrap_or(String::from(""));
                 if chain.account_key.is_none() || account_key.len() == 0 {
                     if chain.is_hpool.unwrap_or_default() {
+                        warn!("Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name);
                         account_key_warnings.push_str(format!("    Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
                     } else if chain.is_hdpool.unwrap_or_default() {
+                        warn!("Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name);
                         account_key_warnings.push_str(format!("    Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
                     }
                 }
