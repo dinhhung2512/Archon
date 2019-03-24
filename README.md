@@ -77,6 +77,17 @@ If you need more control over your chains, you can add any of these parameters t
 - `priority`
   - Required (But only used if `priorityMode` = `true`)
   - A 0-based priority index. 0 = highest priority. MUST BE UNIQUE PER CHAIN.
+- `isHpool`
+  - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HPOOL`**
+  - Set to true to instruct Archon to send the supplied `accountKey` value to HPool on deadline submissions. *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - **NOTE:** You may only specify `isHpool` **OR** `isHdpool` on each chain - specifying both as true will result in a fatal error.
+- `isHdpool`
+  - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HDPOOL`**
+  - Set to true to instruct Archon to talk directly to HDPool via websockets instead of the normal method. *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - **NOTE:** You may only specify `isHpool` **OR** `isHdpool` on each chain - specifying both as true will result in a fatal error.
+- `accountKey`
+  - Optional. **REQUIRED FOR MINING BHD THROUGH `HPOOL` or `HDPOOL`**
+  - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Not used if `isHpool` or `isHdpool` are false.
 - `isBhd`
   - Optional. Default = false
   - Set to true if the chain is mining BHD/BTCHD/BitcoinHD.
@@ -84,8 +95,9 @@ If you need more control over your chains, you can add any of these parameters t
   - Optional. Default = false
   - Set to true if the chain is mining via a pool.
 - `url`
-  - Required.
-  - Must be a fully qualified URI including protocol, domain/IP and port, eg: "http://voiplanparty.com:8124"
+  - Required; **but may be left blank if the chain is for `HDPool`. Eg: `url: ""`**
+  - Must be a fully qualified URI including protocol, domain/IP and port, eg: `"http://voiplanparty.com:8124"`
+  - If you wish to mine via HDPool **and use HDProxy**, you may specify your HDProxy URL here (eg `url: "http://localhost:60100"`) and Archon will use that instead of communicating directly with the pool.
 - `historicalRounds`
   - Optional. Default = 360
   - Not used at the moment, but will be used later for statistics displayed in the Web UI (which is not implemented currently).
@@ -290,12 +302,12 @@ showMinerAddresses: false
 ######## https://github.com/Bloodreaver/Archon#defining-your-mining-chains ########
 
 pocChains:
-### BHD via HDProxy running on the same machine as Archon ###
+### BHD via HDPool - no need for HDProxy ###
   - name: BTCHD - [HDPool]
     priority: 0
-    isBhd: true
-    isPool: true
-    url: "http://localhost:60100"
+    isHdpool: true
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+    url: "" # Not required for HDPool, Archon knows it. If you wish to use HDProxy you can specify a URL here.
     color: cyan
 
 ### BURST via VLP pool (http://voiplanparty.com) ###

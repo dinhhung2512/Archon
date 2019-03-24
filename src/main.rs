@@ -70,11 +70,6 @@ lazy_static! {
                     std::io::stdin().read_line(&mut blah).expect("FAIL");
                     exit(0);
                 } else {
-                    println!(
-                        "  {} {}",
-                        "Config:".red(),
-                        "Loaded successfully.".green()
-                    );
                     conf.unwrap()
                 }
             }
@@ -109,7 +104,7 @@ fn main() {
     let app_name = uppercase_first(APP_NAME);
 
     // setup logging
-    setup_logging();
+    let console_logging_info = setup_logging();
 
     info!("{} v{} started", app_name, VERSION);
 
@@ -132,6 +127,8 @@ fn main() {
     );
 
     if crate::CONF.poc_chains.is_some() {
+        println!("{}", console_logging_info);
+
         println!("  {} {} {}",
             get_time().white(),
             "Config:".red(),
@@ -321,12 +318,14 @@ fn main() {
                     "ERROR".red().underline(),
                     "You do not have any PoC Chains enabled. Archon has nothing to do!".yellow()
                 );
+                error!("There are no PoC Chains configured.");
             } else {
                 println!("  {} {} {}",
                     get_time().white(),
                     "ERROR".red().underline(),
                     "You have multiple chains configured with the same priority level! Priorities must be unique!".yellow()
                 );
+                error!("Multiple PoC Chains are configured with the same priority level. Priority levels must be unique.");
             }
 
             println!("\n  {}",
@@ -350,6 +349,7 @@ fn main() {
                     .yellow(),
                 border.red().bold(),
             );
+            warn!("Unused passphrases found in archon.yaml: {}", unused_passphrase_warnings);
         }
 
         let valid_colors = ["green", "yellow", "blue", "magenta", "cyan", "white"];
@@ -417,17 +417,48 @@ fn setup_ansi_support() {
 #[cfg(not(target_os = "windows"))]
 fn setup_ansi_support() {}
 
-fn setup_logging() {
+fn setup_logging() -> String {
     let logging_level = CONF.logging_level.clone().unwrap_or(String::from("info")).to_lowercase();
+    let logging_level_warning;
     let log_level = match logging_level.as_str() {
-        "off" => log::LevelFilter::Off,
-        "trace" => log::LevelFilter::Trace,
-        "debug" => log::LevelFilter::Debug,
-        "info" => log::LevelFilter::Info,
-        "warn" => log::LevelFilter::Warn,
-        "error" => log::LevelFilter::Error,
-        _ => log::LevelFilter::Info,
+        "off" => {
+            logging_level_warning = "";
+            log::LevelFilter::Off
+        },
+        "trace" => {
+            logging_level_warning = " (Warning: Log files will get very large, very quickly using this level!)";
+            log::LevelFilter::Trace
+        },
+        "debug" => {
+            logging_level_warning = " (Warning: Log files will get very large, very quickly using this level!)";
+            log::LevelFilter::Debug
+        },
+        "info" => {
+            logging_level_warning = "";
+            log::LevelFilter::Info
+        },
+        "warn" => {
+            logging_level_warning = "";
+            log::LevelFilter::Warn
+        },
+        "error" => {
+            logging_level_warning = "";
+            log::LevelFilter::Error
+        },
+        _ => {
+            logging_level_warning = "";
+            log::LevelFilter::Info
+        },
     };
+    let console_logging_message = format!("  {} {} {}",
+        get_time().white(),
+        "Config:".red(),
+        format!("{} {}{}",
+            "Logging Level:".green(),
+            format!("{}", uppercase_first(logging_level.as_str())).yellow(),
+            logging_level_warning.red(),
+        )
+    );
     if log_level != log::LevelFilter::Off {
         // create logs directory
         if std::fs::create_dir("logs").is_ok() {}
@@ -467,6 +498,7 @@ fn setup_logging() {
             Err(_) => {}
         }
     }
+    console_logging_message
 }
 
 fn thread_check_latest_githib_version() {
@@ -492,12 +524,18 @@ fn thread_check_latest_githib_version() {
                 }
                 match Version::parse(tag_name_string.as_str()) {
                     Ok(latest) => {
-                        if current_version < latest {
+                        if current_version < latest && current_version.is_prerelease() && latest.is_prerelease() {
                             let border = "------------------------------------------------------------------------------------------";
                             let headline = "  NEW VERSION AVAILABLE ==> ";
                             println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new release available on GitHub. Please update ASAP!\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
                                 border, headline, tag_name_string, border, border).red());
                             info!("VERSION CHECK: v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
+                        } else if current_version < latest && !current_version.is_prerelease() && latest.is_prerelease() {
+                            let border = "------------------------------------------------------------------------------------------";
+                            let headline = "  NEW PRE-RELEASE VERSION AVAILABLE ==> ";
+                            println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new pre-release available on GitHub.\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
+                                border, headline, tag_name_string, border, border).red());
+                            info!("VERSION CHECK: Pre-release v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
                         } else {
                             info!("VERSION CHECK: Up to date. (Current = {}, Latest = {})", VERSION, tag_name_string);
                         }

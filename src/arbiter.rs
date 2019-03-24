@@ -18,8 +18,33 @@ struct MiningInfoPollingResult {
 }
 
 fn create_chain_nonce_submission_client(chain_index: u8) {
+    // get current chain
+    let current_chain = super::get_chain_from_index(chain_index).unwrap();
+    use reqwest::header;
+    let mut default_headers = header::HeaderMap::new();
+    // if this chain is for hpool, add a default header to this client with the user's account key
+    if current_chain.is_hpool.unwrap_or_default() {
+        // get account key from config
+        let account_key_header = current_chain.account_key.unwrap_or(String::from(""));
+        // attempt to parse account key into a HeaderValue
+        let account_key_header_value: header::HeaderValue = match account_key_header.parse() {
+            Ok(val) => val,
+            Err(why) => {
+                warn!("Couldn't parse account key into a HeaderValue for chain #{}: {:?}", chain_index, why);
+                "Invalid Header Data".parse().unwrap()
+            },
+        };
+        default_headers.insert("AccountKey", account_key_header_value);
+    }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
-    chain_nonce_submission_clients.insert(chain_index, reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build().unwrap());
+    chain_nonce_submission_clients.insert(
+        chain_index, 
+        reqwest::Client::builder()
+            .default_headers(default_headers)
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap()
+        );
     drop(chain_nonce_submission_clients);
 }
 
@@ -132,7 +157,6 @@ fn thread_get_mining_info(
                 };
             }
             Err(why) => {
-                trace!("{} ({}) Error getting mining info: {}", &*chain.name, &*chain.url, why);
                 if !request_failure {
                     request_failure = true;
                     last_outage_reminder_sent = Local::now();
@@ -141,6 +165,7 @@ fn thread_get_mining_info(
                         format!("{}", &*chain.name).color(&*chain.color),
                         "Could not retrieve mining info!".red()
                     );
+                    info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, why);
                 } else {
                     let outage_duration = Local::now() - last_request_success;
                     let last_reminder = Local::now() - last_outage_reminder_sent;
@@ -519,6 +544,8 @@ fn start_mining_chain(index: u8) {
                         mining_info.target_deadline,
                         last_block_time,
                     );
+                    // sleep for half a second just to make sure the above gets printed to console before the block is started
+                    //std::thread::sleep(std::time::Duration::from_millis(500));
                     if mining_info.base_target > 0 {
                         // update the queue status for this chain
                         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
@@ -564,7 +591,7 @@ pub fn get_best_deadline(block_height: u32, account_id: u64) -> u64 {
 }
 
 fn update_best_deadline(block_height: u32, account_id: u64, deadline: u64) {
-    info!("NEW BestDL - Height={}, ID={}, DL={}", block_height, account_id, deadline);
+    debug!("NEW BestDL - Height={}, ID={}, DL={}", block_height, account_id, deadline);
     match get_best_deadlines_for_block(block_height) {
         Some(mut best_deadlines) => {
             // check if account id has a deadline in the vec
@@ -699,7 +726,7 @@ pub fn process_nonce_submission(
     adjusted: bool,
     remote_addr: String,
 ) -> String {
-    info!("Received DL: Height={}, ID={}, Nonce={}, DL={:?}, Software={}, Adjusted={}, Address={}", block_height, account_id, nonce, deadline, user_agent_header, adjusted, remote_addr);
+    debug!("Received DL: Height={}, ID={}, Nonce={}, DL={:?}, Software={}, Adjusted={}, Address={}", block_height, account_id, nonce, deadline, user_agent_header, adjusted, remote_addr);
     // validate data
     // get mining info for chain
     let chain_index = get_chain_index_from_height(block_height); // defaults to the chain being currently mined if it cannot find a height match
@@ -769,7 +796,9 @@ pub fn process_nonce_submission(
                 }
                 let mut passphrase_str = String::from("");
                 // if solo mining burst, look for a passphrase from config for this account id
-                if !current_chain.is_pool.unwrap_or_default()
+                if !current_chain.is_hpool.unwrap_or_default()
+                    && !current_chain.is_hdpool.unwrap_or_default()
+                    && !current_chain.is_pool.unwrap_or_default()
                     && !current_chain.is_bhd.unwrap_or_default()
                 {
                     let mut passphrase_set = false;
@@ -799,12 +828,14 @@ pub fn process_nonce_submission(
                 }
                 if send_deadline {
                     let mut url = String::from(&*current_chain.url);
-                    if current_chain.is_bhd.unwrap_or_default()
-                        || current_chain.is_pool.unwrap_or_default()
-                    {
+                    // check if NOT solo mining burst
+                    if current_chain.is_hdpool.unwrap_or_default()
+                        || current_chain.is_hpool.unwrap_or_default()
+                        || current_chain.is_bhd.unwrap_or_default()
+                        || current_chain.is_pool.unwrap_or_default() {
                         url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
                         height, account_id, nonce, unadjusted_deadline).as_str());
-                    } else {
+                    } else { // solo mining burst
                         url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
                         height, account_id, nonce, passphrase_str).as_str());
                     }
@@ -812,7 +843,7 @@ pub fn process_nonce_submission(
                     let mut attempts = 0;
                     while attempts < 5 && !deadline_accepted && !deadline_rejected {
                         _deadline_sent = true;
-                        info!("DL Send - {} (Unadjusted={}) | Attempt #{}/5", adjusted_deadline, unadjusted_deadline, attempts + 1);
+                        info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
                         match forward_nonce_submission(chain_index, url.as_str(), user_agent_header)
                         {
                             Some(text) => {
@@ -835,7 +866,7 @@ pub fn process_nonce_submission(
                 }
                 if deadline_accepted {
                     let confirm_time = (Local::now() - start_time).num_milliseconds();
-                    info!("DL Confirmed - Block #{} | ID={} | DL={} (Unadjusted={}) | {}ms", block_height, account_id, adjusted_deadline, unadjusted_deadline, confirm_time);
+                    info!("DL Confirmed - #{} | ID={} | DL={} (Unadjusted={}) | {}ms", block_height, account_id, adjusted_deadline, unadjusted_deadline, confirm_time);
                     // print nonce confirmation
                     super::print_nonce_accepted(
                         chain_index,
@@ -875,7 +906,7 @@ pub fn process_nonce_submission(
                         }
                     }
                 } else {
-                    info!("FAKE Confirm - #{} | DL={} (Unadjusted={})", block_height, adjusted_deadline, unadjusted_deadline);
+                    debug!("FAKE Confirm - #{} | DL={} (Unadjusted={})", block_height, adjusted_deadline, unadjusted_deadline);
                     // confirm deadline to miner
                     let resp = SubmitNonceResponse {
                         result: String::from("success"),
@@ -886,9 +917,10 @@ pub fn process_nonce_submission(
                 }
             }
             _ => {
-                if !current_chain.is_pool.unwrap_or_default()
-                    && !current_chain.is_bhd.unwrap_or_default()
-                {
+                if !current_chain.is_hdpool.unwrap_or_default()
+                    && !current_chain.is_hpool.unwrap_or_default()
+                    && !current_chain.is_pool.unwrap_or_default()
+                    && !current_chain.is_bhd.unwrap_or_default() {
                     let resp = SubmitNonceResponse{
                         result: String::from("failure"),
                         deadline: None,
