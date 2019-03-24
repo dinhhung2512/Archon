@@ -211,6 +211,17 @@ fn main() {
         let mut unused_passphrase_warnings = String::from("");
         for inner in &crate::CONF.poc_chains {
             for chain in inner {
+                if chain.is_hdpool.unwrap_or_default() && chain.is_hpool.unwrap_or_default() {
+                    // fatal error - can't have chain defined as for both HPOOL and HDPOOL
+                    println!("\n  {}", format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name).red().underline());
+                    error!("The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name);
+
+                    println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+
+                    let mut blah = String::new();
+                    std::io::stdin().read_line(&mut blah).expect("FAIL");
+                    exit(0);
+                }
                 if chain.numeric_id_to_passphrase.is_some()
                     && (chain.is_pool.unwrap_or_default()
                         || chain.is_bhd.unwrap_or_default()
