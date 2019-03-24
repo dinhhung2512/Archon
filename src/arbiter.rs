@@ -19,16 +19,19 @@ struct MiningInfoPollingResult {
 
 fn create_chain_nonce_submission_client(chain_index: u8) {
     // get current chain
-    let current_chain = super::get_chain_from_index(chain_index).unwrap();
+    let chain = super::get_chain_from_index(chain_index).unwrap();
     use reqwest::header;
     let mut default_headers = header::HeaderMap::new();
     // if this chain is for hpool, add a default header to this client with the user's account key
-    if current_chain.is_hpool.unwrap_or_default() {
+    if chain.is_hpool.unwrap_or_default() {
         // get account key from config
-        let account_key_header = current_chain.account_key.unwrap_or(String::from(""));
+        let account_key_header = chain.account_key.unwrap_or(String::from(""));
         // attempt to parse account key into a HeaderValue
         let account_key_header_value: header::HeaderValue = match account_key_header.parse() {
-            Ok(val) => val,
+            Ok(val) => {
+                info!("{} (HPOOL) - Set default headers to include AccountKey=>{}", &*chain.name, account_key_header);
+                val
+            },
             Err(why) => {
                 warn!("Couldn't parse account key into a HeaderValue for chain #{}: {:?}", chain_index, why);
                 "Invalid Header Data".parse().unwrap()

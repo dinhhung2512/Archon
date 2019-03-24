@@ -209,6 +209,7 @@ fn main() {
         let mut chain_counter = 0u8;
         let mut multiple_same_priority_chains = false;
         let mut unused_passphrase_warnings = String::from("");
+        let mut account_key_warnings = String::from("");
         for inner in &crate::CONF.poc_chains {
             for chain in inner {
                 if chain.is_hdpool.unwrap_or_default() && chain.is_hpool.unwrap_or_default() {
@@ -221,6 +222,15 @@ fn main() {
                     let mut blah = String::new();
                     std::io::stdin().read_line(&mut blah).expect("FAIL");
                     exit(0);
+                }
+                // check if account key is defined if the chain is for mining via hpool or hdpool
+                let account_key = chain.account_key.clone().unwrap_or(String::from(""));
+                if chain.account_key.is_none() || account_key.len() == 0 {
+                    if chain.is_hpool.unwrap_or_default() {
+                        account_key_warnings.push_str(format!("    Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
+                    } else if chain.is_hdpool.unwrap_or_default() {
+                        account_key_warnings.push_str(format!("    Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
+                    }
                 }
                 if chain.numeric_id_to_passphrase.is_some()
                     && (chain.is_pool.unwrap_or_default()
@@ -361,6 +371,9 @@ fn main() {
                 border.red().bold(),
             );
             warn!("Unused passphrases found in archon.yaml: {}", unused_passphrase_warnings);
+        }
+        if account_key_warnings.len() > 0 {
+            println!("\n  {}", format!("WARNING:\n{}", account_key_warnings).red());
         }
 
         let valid_colors = ["green", "yellow", "blue", "magenta", "cyan", "white"];
