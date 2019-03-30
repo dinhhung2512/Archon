@@ -81,7 +81,7 @@ fn thread_get_mining_info(
                 "User-Agent",
                 format!(
                     "{} v{}",
-                    super::uppercase_first(super::APP_NAME),
+                    crate::utility::uppercase_first(super::APP_NAME),
                     super::VERSION
                 ),
             )

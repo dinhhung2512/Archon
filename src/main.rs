@@ -1,16 +1,7 @@
 #![feature(vec_remove_item, proc_macro_hygiene, decl_macro)]
-#[cfg(target_os = "windows")]
-use ansi_term;
-use chrono::{DateTime, Local};
+
 use colored;
 use colored::Colorize;
-use std::collections::HashMap;
-use std::fs::File;
-use std::process::exit;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread;
-use fern;
 
 #[macro_use]
 extern crate serde_derive;
@@ -29,9 +20,6 @@ pub mod utility;
 use crate::config::Config;
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
-
-const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 fn main() -> Result<(), ()> {
     app::new().map(|application| {

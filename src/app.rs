@@ -347,6 +347,28 @@ impl App {
         return String::from(col);
     }
 
+    fn print_block_requeued_or_interrupted(&self, chain_name: &str, chain_color: &str, height: u32, requeued: bool) {
+        let border = String::from("------------------------------------------------------------------------------------------");
+        let color = self.get_color(chain_color);
+        if requeued {
+            println!("{}", border.yellow());
+            println!("  {} {} => {} | {}",
+                format!("{}", self.get_time()).white(),
+                "INTERRUPTED & REQUEUED BLOCK".color(color),
+                format!("{}", chain_name).color(color),
+                format!("#{}", height).color(color));
+            println!("{}", border.yellow());
+        } else {
+            println!("{}", border.red());
+            println!("  {} {} => {} | {}",
+                format!("{}", self.get_time()).white(),
+                "INTERRUPTED BLOCK".red(),
+                format!("{}", chain_name).color(color),
+                format!("#{}", height).color(color));
+            println!("{}", border.red());
+        }
+    }
+
     fn print_nonce_accepted(&self, chain_index: u8, deadline: u64, confirmation_time_ms: i64) {
         let current_chain = self.get_chain_from_index(chain_index).unwrap();
         let color = self.get_color(&*current_chain.color);
