@@ -22,6 +22,15 @@ pub struct PocChain {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_pool: Option<bool>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_hpool: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_hdpool: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_key: Option<String>,
+
     pub url: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -230,12 +239,12 @@ showMinerAddresses: false
 ######## https://github.com/Bloodreaver/Archon#defining-your-mining-chains ########
 
 pocChains:
-### BHD via HDProxy running on the same machine as Archon ###
+### BHD via HDPool - no need for HDProxy ###
   - name: BTCHD - [HDPool]
     priority: 0
-    isBhd: true
-    isPool: true
-    url: "http://localhost:60100"
+    isHdpool: true
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+    url: "" # Not required for HDPool, Archon knows it. If you wish to use HDProxy you can specify a URL here.
     color: cyan
 
 ### BURST via VLP pool (http://voiplanparty.com) ###

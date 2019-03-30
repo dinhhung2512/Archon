@@ -183,7 +183,8 @@ fn get_miner_software_alt(req: &HttpRequest) -> &str {
     }
 }
 
-fn handle_get_mining_info() -> FutureResult<HttpResponse, Error> {
+fn handle_get_mining_info(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
+    debug!("GetMiningInfo Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     match super::get_current_mining_info() {
         Some(current_mining_info) => {
             create_response(StatusCode::OK, current_mining_info.to_json().to_string())
@@ -195,6 +196,7 @@ fn handle_get_mining_info() -> FutureResult<HttpResponse, Error> {
 }
 
 fn handle_submit_nonce(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
+    debug!("SubmitNonce Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     match *req.method() {
         Method::POST => {
             match try_get_submit_nonce_data(req) {
@@ -237,7 +239,7 @@ fn burst_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
     match try_get_query_string_value(&req, "requestType") {
         (true, request_type) => {
             match request_type.to_lowercase().as_str() {
-                "getmininginfo" => handle_get_mining_info(),
+                "getmininginfo" => handle_get_mining_info(&req),
                 "submitnonce" => handle_submit_nonce(&req),
                 _ => handle_invalid_request_type()
             }
@@ -253,6 +255,7 @@ fn handle_invalid_request_type() -> FutureResult<HttpResponse, Error> {
 }
 
 fn handle_api_get_best_deadlines(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
+    debug!("GetBestDeadlines Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     match try_get_query_string_value(&req, "height") {
         (true, height_str) => 
             match str::parse::<u32>(height_str.as_str()) {
@@ -277,6 +280,7 @@ fn handle_api_get_best_deadlines(req: &HttpRequest) -> FutureResult<HttpResponse
 }
 
 fn handle_api_get_config(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
+    debug!("GetConfig Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     // don't allow access to other machines for this request - used for modifying the config from the WebUI only
     let mut remote_address = req.connection_info().remote().unwrap_or("").to_string();
     if remote_address.len() >= 9 {
@@ -335,7 +339,8 @@ fn api_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
     }
 }
 
-fn webui_handler(_req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
+fn webui_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
+    debug!("WEB UI Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     // just serve a static landing page for now
     result(Ok(HttpResponse::build(StatusCode::NOT_FOUND)
         .header(header::USER_AGENT, get_user_agent_str())
@@ -415,6 +420,8 @@ pub fn get_user_agent_str() -> String {
 }
 
 pub fn start_server() {
+    use colored::Colorize;
+    use std::process::exit;
     let archon_web_server_sys = actix::System::new("archon");
     server::new(|| {
         App::new()
@@ -426,7 +433,21 @@ pub fn start_server() {
             })
     })
     .bind(format!("{}:{}", &crate::CONF.web_server_bind_address, &crate::CONF.web_server_port))
-    .expect(format!("Couldn't bind to {}:{}! Please ensure it isn't in use!",  &crate::CONF.web_server_bind_address, &crate::CONF.web_server_port).as_str())
+    .map_err(|why| {
+        println!("\n\n  ERROR: Couldn't bind to {}:{}! Please ensure it isn't in use! - {:?}",  &crate::CONF.web_server_bind_address, &crate::CONF.web_server_port, why);
+        error!("Couldn't bind to {}:{}! Please ensure it isn't in use! - {:?}",  &crate::CONF.web_server_bind_address, &crate::CONF.web_server_port, why);
+        println!(
+            "\n  {}",
+            "Execution completed. Press enter to exit."
+                .red()
+                .underline()
+        );
+
+        let mut blah = String::new();
+        std::io::stdin().read_line(&mut blah).expect("FAIL");
+        exit(0);
+    })
+    .unwrap()
     .shutdown_timeout(0)
     .server_hostname(get_user_agent_str().to_string())
     .start();
