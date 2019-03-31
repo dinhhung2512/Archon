@@ -263,32 +263,6 @@ pocChains:
     color: blue"#.to_string();
     }
 
-    pub fn try_parse_config(file: File) -> (Option<Self>, bool) {
-        match serde_yaml::from_reader(file) {
-            Ok(cfg) => (Some(cfg), true),
-            Err(parse_err) => {
-                println!(
-                    "{} {}",
-                    "ERROR".red().underline(),
-                    "An error was encountered while attempting to parse the config file."
-                );
-                println!(
-                    "   {} {}",
-                    "MSG".red().underline(),
-                    format!("{}", parse_err).red()
-                );
-                println!(
-                    "  {} {} {}{}",
-                    "HELP".green().underline(),
-                    "Please check your YAML syntax (perhaps paste it into".green(),
-                    "yamllint.com".blue(),
-                    ")".green()
-                );
-                (None, false)
-            }
-        }
-    }
-
     pub fn parse_config(file: File) -> Result<Self, ArchonError> {
         match serde_yaml::from_reader(file) {
             Ok(cfg) => Ok(cfg),

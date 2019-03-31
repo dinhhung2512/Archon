@@ -54,44 +54,28 @@ lazy_static! {
     };
     #[derive(Serialize)]
     pub static ref CONF: Config = {
-        let r: Config = match File::open("archon.yaml") {
-            Ok(file) => {
-                match Config::parse_config(file) {
-                    Ok(c) => c,
-                    Err(why) => {
-                        println!("{}", why);
-                        
-                        query_create_default_config();
-
-                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
-
-                        let mut blah = String::new();
-                        std::io::stdin().read_line(&mut blah).expect("FAIL");
-                        exit(0);
-                    }
-                }
-            }
-            Err(_) => {
-                println!(
-                    "  {} {}",
-                    "ERROR".red().underline(),
-                    "An error was encountered while attempting to open the config file.".red()
-                );
+        let c: Config = match File::open("archon.yaml").map(|file| {
+            Config::parse_config(file).map_err(|why| {
+                println!("  {}", why);
                 query_create_default_config();
-
-                println!(
-                    "\n  {}",
-                    "Execution completed. Press enter to exit."
-                        .red()
-                        .underline()
-                );
-
+                println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
                 let mut blah = String::new();
                 std::io::stdin().read_line(&mut blah).expect("FAIL");
                 exit(0);
-            }
+            })
+        }).map_err(|why| {
+            println!("  {} {}\n  {}", "ERROR".red().underline(), "An error was encountered while attempting to open the config file.".red(), why);
+            query_create_default_config();
+            println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+            let mut blah = String::new();
+            std::io::stdin().read_line(&mut blah).expect("FAIL");
+            exit(0)
+        }) {
+            Ok(data) => data.unwrap(),
+            Err(_) => { unreachable!(); },
         };
-        r
+
+        c
     };
 }
 
