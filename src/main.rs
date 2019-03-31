@@ -25,6 +25,7 @@ pub mod arbiter;
 pub mod config;
 pub mod upstream;
 pub mod web;
+pub mod error;
 use crate::config::Config;
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
@@ -55,22 +56,19 @@ lazy_static! {
     pub static ref CONF: Config = {
         let r: Config = match File::open("archon.yaml") {
             Ok(file) => {
-                let (conf, err) = Config::try_parse_config(file);
-                if !err {
-                    query_create_default_config();
+                match Config::parse_config(file) {
+                    Ok(c) => c,
+                    Err(why) => {
+                        println!("{}", why);
+                        
+                        query_create_default_config();
 
-                    println!(
-                        "\n  {}",
-                        "Execution completed. Press enter to exit."
-                            .red()
-                            .underline()
-                    );
+                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
 
-                    let mut blah = String::new();
-                    std::io::stdin().read_line(&mut blah).expect("FAIL");
-                    exit(0);
-                } else {
-                    conf.unwrap()
+                        let mut blah = String::new();
+                        std::io::stdin().read_line(&mut blah).expect("FAIL");
+                        exit(0);
+                    }
                 }
             }
             Err(_) => {

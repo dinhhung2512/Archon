@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 
+use crate::error::ArchonError;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PocChain {
@@ -287,7 +289,27 @@ pocChains:
         }
     }
 
-    pub fn to_yaml(&self) -> String {
-        serde_yaml::to_string(self).unwrap()
+    pub fn parse_config(file: File) -> Result<Self, ArchonError> {
+        match serde_yaml::from_reader(file) {
+            Ok(cfg) => Ok(cfg),
+            Err(why) => {
+                Err(ArchonError::new(&format!("{} {}\n  {} {}\n  {} {} {}{}", 
+                    "ERROR".red().underline(),
+                    "An error was encountered while attempting to parse the config file.",
+                    "MSG".red().underline(),
+                    format!("{}", why).red(),
+                    "HELP".green().underline(),
+                    "Please check your YAML syntax (Perhaps paste it into".green(),
+                    "yamlline.com".blue(),
+                    ")".green())))
+            }
+        }
+    }
+
+    pub fn to_yaml(&self) -> Result<String, ArchonError> {
+        match serde_yaml::to_string(self) {
+            Ok(yaml) => Ok(yaml),
+            Err(why) => Err(ArchonError::new(&format!("{:?}", why))),
+        }
     }
 }
