@@ -185,14 +185,7 @@ fn get_miner_software_alt(req: &HttpRequest) -> &str {
 
 fn handle_get_mining_info(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
     debug!("GetMiningInfo Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
-    match super::get_current_mining_info() {
-        Some(current_mining_info) => {
-            create_response(StatusCode::OK, current_mining_info.to_json().to_string())
-        },
-        _ => {
-            create_response(StatusCode::OK, r#"{"result":"failure","reason":"Haven't found any mining info!"}"#.to_string())
-        }
-    }
+    create_response(StatusCode::OK, super::get_current_mining_info_json())
 }
 
 fn handle_submit_nonce(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {

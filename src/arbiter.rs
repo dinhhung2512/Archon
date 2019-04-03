@@ -77,17 +77,13 @@ pub fn thread_arbitrate() {
     loop {
         match mining_info_receiver.recv() {
             Ok(_mining_info_polling_result) => {
-                info!("{} {:?}", &*_mining_info_polling_result.chain.name, _mining_info_polling_result.mining_info);
+                info!("NEW BLOCK - {}: {:?}", &*_mining_info_polling_result.chain.name, _mining_info_polling_result.mining_info);
                 update_chain_info(&_mining_info_polling_result);
                 process_new_block(&_mining_info_polling_result);
             }
             Err(_) => {}
         }
     }
-}
-
-fn get_hdpool_mining_info() {
-    // to do
 }
 
 fn thread_get_mining_info(
@@ -315,6 +311,9 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
         // set the queue status for this chain back by 1, thereby "requeuing" it
         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
         chain_queue_status_map.insert(current_chain_index, (requeued_height - 1, requeued_time));
+        debug!("SET START - Chain #{} Block #{} ==> #{}", current_chain_index, requeued_height, requeued_height - 1);
+        let mut block_start_printed_map = crate::BLOCK_START_PRINTED.lock().unwrap();
+        block_start_printed_map.insert(current_chain_index, requeued_height - 1);
     } else {
         info!("INTERRUPT BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
     }
@@ -527,29 +526,30 @@ fn start_mining_chain(index: u8) {
     // get chain
     match super::get_chain_from_index(index) {
         Some(chain) => {
-            // get currently mining block height before we change it
-            let current_block_height = match super::get_current_mining_info() {
-                Some(mi) => mi.height,
-                _ => 0,
-            };
-            let last_block_time = get_time_since_block_start(current_block_height);
-            // set current chain index
-            *crate::CURRENT_CHAIN_INDEX.lock().unwrap() = index;
             // get access to chain mining infos
             match get_current_chain_mining_info(index) {
                 Some((mining_info, _)) => {
-                    info!("START BLOCK - Chain #{} - Block #{} - Priority {} | {} | {}", index, mining_info.height, chain.priority, &*chain.name, &*chain.url);
-                    // print block info
-                    super::print_block_started(
-                        mining_info.height,
-                        mining_info.base_target,
-                        String::from(&*mining_info.generation_signature),
-                        mining_info.target_deadline,
-                        last_block_time,
-                    );
-                    // sleep for half a second just to make sure the above gets printed to console before the block is started
-                    //std::thread::sleep(std::time::Duration::from_millis(500));
                     if mining_info.base_target > 0 {
+                        // get currently mining block height before we change it
+                        let current_block_height = match super::get_current_mining_info() {
+                            Some(mi) => mi.height,
+                            _ => 0,
+                        };
+                        let last_block_time = get_time_since_block_start(current_block_height);
+                        // print block info
+                        super::print_block_started(
+                            index,
+                            mining_info.height,
+                            mining_info.base_target,
+                            String::from(&*mining_info.generation_signature),
+                            mining_info.target_deadline,
+                            last_block_time,
+                        );
+                        info!("START BLOCK - Chain #{} - Block #{} - Priority {} | {} | {}", index, mining_info.height, chain.priority, &*chain.name, &*chain.url);
+                        // set last mining info
+                        *crate::LAST_MINING_INFO.lock().unwrap() = super::get_current_mining_info_json();
+                        // set current chain index
+                        *crate::CURRENT_CHAIN_INDEX.lock().unwrap() = index;
                         // update the queue status for this chain
                         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
                         chain_queue_status_map.insert(index, (mining_info.height, Local::now()));

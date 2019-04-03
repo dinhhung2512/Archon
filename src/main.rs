@@ -38,6 +38,14 @@ lazy_static! {
         let chain_mining_infos = HashMap::new();
         Arc::new(Mutex::new(chain_mining_infos))
     };
+    static ref MINING_INFO_CACHE: Arc<Mutex<HashMap<u8, (u32, String)>>> = {
+        let mining_info_cached_map = HashMap::new();
+        Arc::new(Mutex::new(mining_info_cached_map))
+    };
+    static ref BLOCK_START_PRINTED: Arc<Mutex<HashMap<u8, u32>>> = {
+        let block_start_printed_map = HashMap::new();
+        Arc::new(Mutex::new(block_start_printed_map))
+    };
     // Key = block height, Value = tuple (account_id, best_deadline)
     static ref BEST_DEADLINES: Arc<Mutex<HashMap<u32, Vec<(u64, u64)>>>> = {
         let best_deadlines = HashMap::new();
@@ -48,6 +56,7 @@ lazy_static! {
         Arc::new(Mutex::new(chain_queue_status))
     };
     static ref CURRENT_CHAIN_INDEX: Arc<Mutex<u8>> = Arc::new(Mutex::new(0u8));
+    static ref LAST_MINING_INFO: Arc<Mutex<String>> = Arc::new(Mutex::new(String::from("")));
     static ref CHAIN_NONCE_SUBMISSION_CLIENTS: Arc<Mutex<HashMap<u8, reqwest::Client>>> = {
         let chain_nonce_submission_clients = HashMap::new();
         Arc::new(Mutex::new(chain_nonce_submission_clients))
@@ -580,6 +589,78 @@ fn get_color(col: &str) -> &str {
     return &col;
 }
 
+fn get_cached_mining_info() -> Option<(u8, u32, String)> {
+    let cache_map = MINING_INFO_CACHE.lock().unwrap();
+    let index = CURRENT_CHAIN_INDEX.lock().unwrap();
+    match cache_map.get(&index) {
+        Some((height, json)) => {
+            Some((*index, *height, json.clone()))
+        },
+        None => None,
+    }
+}
+
+fn add_mining_info_to_cache(index: u8, mining_info: MiningInfo) -> String {
+    let mut cache_map = MINING_INFO_CACHE.lock().unwrap();
+    let mining_info_json = mining_info.to_json().to_string();
+    debug!("ADD CACHE - Chain #{} Block #{}: {:?}", index, mining_info.height, mining_info);
+    cache_map.insert(index, (mining_info.height, mining_info_json.clone()));
+    mining_info_json
+}
+
+fn is_block_start_printed(index: u8, height: u32) -> bool {
+    let block_start_printed_map = BLOCK_START_PRINTED.lock().unwrap();
+    match block_start_printed_map.get(&index) {
+        Some(matched_height) => {
+            debug!("IsBlockStartPrinted - Chain #{} Block #{} = {} [Matched Height={}]", index, height, *matched_height == height, *matched_height);
+            *matched_height == height
+        },
+        _ => {
+            debug!("IsBlockStartPrinted - Chain #{} Block #{} = false (No result for that chain yet)", index, height);
+            false
+        }
+    }
+}
+
+/// Return previously cached mining info if present, or create a cache for current mining info and return that
+fn get_current_mining_info_json() -> String {
+    match get_cached_mining_info() {
+        Some((index, height, mining_info_json)) => {
+            // check if block start has been printed for this index & height
+            //   TRUE: Go ahead and return the mining info
+            //  FALSE: Return the previous mining info
+            if is_block_start_printed(index, height) {
+                mining_info_json.clone()
+            } else {
+                match get_current_mining_info() {
+                    Some(mining_info) => {
+                        if is_block_start_printed(index, mining_info.height) {
+                            add_mining_info_to_cache(index, mining_info.clone())
+                        } else {
+                            let last_mining_info = LAST_MINING_INFO.lock().unwrap();
+                            debug!("Chain #{} Block #{} is not printed to console yet, sending last mining info: {}", index, height, last_mining_info.clone());
+                            last_mining_info.clone()
+                        }
+                    },
+                    _ => {
+                        let last_mining_info = LAST_MINING_INFO.lock().unwrap();
+                        info!("Chain #{} Block #{} is not printed to console yet, sending last mining info: {}", index, height, last_mining_info.clone());
+                        last_mining_info.clone()
+                    }
+                }
+            }
+        },
+        None => {
+            let chain_map = CHAIN_MINING_INFOS.lock().unwrap();
+            let index = CURRENT_CHAIN_INDEX.lock().unwrap();
+            match chain_map.get(&index) {
+                Some((mining_info, _)) => add_mining_info_to_cache(*index, mining_info.clone()),
+                None => r#"{"result":"failure","reason":"Haven't found any mining info!"}"#.to_string(),
+            }
+        }
+    }
+}
+
 fn get_current_mining_info() -> Option<MiningInfo> {
     let chain_map = CHAIN_MINING_INFOS.lock().unwrap();
     let index = CURRENT_CHAIN_INDEX.lock().unwrap();
@@ -681,192 +762,197 @@ fn print_block_requeued_or_interrupted(
 }*/
 
 fn print_block_started(
+    chain_index: u8,
     height: u32,
     base_target: u32,
     gen_sig: String,
     target_deadline: u64,
     last_block_time: Option<u64>,
 ) {
-    let chain_index = arbiter::get_current_chain_index();
-    let current_chain = get_chain_from_index(chain_index).unwrap();
-    let mut new_block_message = String::from("");
-    let border = String::from("------------------------------------------------------------------------------------------");
-    let color = get_color(&*current_chain.color);
-    let last_block_time_str;
-    match last_block_time {
-        Some(time) => {
-            if time > 0 {
-                let human_time;
-                if CONF.show_human_readable_deadlines.unwrap_or(true) {
-                    human_time = format!(" ({})", format_timespan(time));
+    if !is_block_start_printed(chain_index, height) {
+        let current_chain = get_chain_from_index(chain_index).unwrap();
+        let mut new_block_message = String::from("");
+        let border = String::from("------------------------------------------------------------------------------------------");
+        let color = get_color(&*current_chain.color);
+        let last_block_time_str;
+        match last_block_time {
+            Some(time) => {
+                if time > 0 {
+                    let human_time;
+                    if CONF.show_human_readable_deadlines.unwrap_or(true) {
+                        human_time = format!(" ({})", format_timespan(time));
+                    } else {
+                        human_time = String::from("");
+                    }
+                    let plural = match time {
+                        1 => "",
+                        _ => "s",
+                    };
+                    last_block_time_str = format!(
+                        "{}\n  Block finished in {} second{}{}\n",
+                        border, time, plural, human_time
+                    );
                 } else {
-                    human_time = String::from("");
+                    last_block_time_str = String::from("")
                 }
-                let plural = match time {
-                    1 => "",
-                    _ => "s",
-                };
-                last_block_time_str = format!(
-                    "{}\n  Block finished in {} second{}{}\n",
-                    border, time, plural, human_time
-                );
-            } else {
-                last_block_time_str = String::from("")
             }
+            None => last_block_time_str = String::from(""),
+        };
+        /*let mut prev_block_time = 0;
+        if height > 0 {
+            prev_block_time = arbiter::get_time_since_block_start(height - 1).unwrap_or(0);
         }
-        None => last_block_time_str = String::from(""),
-    };
-    /*let mut prev_block_time = 0;
-    if height > 0 {
-        prev_block_time = arbiter::get_time_since_block_start(height - 1).unwrap_or(0);
-    }
-    let prev_block_time_str;
-    if prev_block_time > 0 {
-        if CONF.show_human_readable_deadlines.unwrap_or(true) {
-            prev_block_time_str = format!("[#{} Run time: {} secs ({})]", height - 1, prev_block_time, format_timespan(prev_block_time));
+        let prev_block_time_str;
+        if prev_block_time > 0 {
+            if CONF.show_human_readable_deadlines.unwrap_or(true) {
+                prev_block_time_str = format!("[#{} Run time: {} secs ({})]", height - 1, prev_block_time, format_timespan(prev_block_time));
+            } else {
+                prev_block_time_str = format!("[#{} Run time: {} secs", height - 1, prev_block_time);
+            }
         } else {
-            prev_block_time_str = format!("[#{} Run time: {} secs", height - 1, prev_block_time);
+            prev_block_time_str = String::from("");
+        }*/
+        new_block_message.push_str(
+            format!("{}{}\n  {} {} => {} | {}\n{}\n  {}          {}\n",
+                last_block_time_str.yellow(),
+                border.color(color).bold(),
+                format!("{}", get_time()).white(),
+                " STARTED BLOCK".color(color),
+                format!("{}", &*current_chain.name).color(color),
+                format!("#{}", height).color(color),
+                //prev_block_time_str.color(color).bold(),
+                border.color(color).bold(),
+                "Base Target:".color(color).bold(),
+                base_target.to_string().color(color),
+            )
+            .as_str(),
+        );
+        let mut actual_target_deadline = target_deadline;
+        if actual_target_deadline == 0 {
+            actual_target_deadline = u64::max_value();
         }
-    } else {
-        prev_block_time_str = String::from("");
-    }*/
-    new_block_message.push_str(
-        format!("{}{}\n  {} {} => {} | {}\n{}\n  {}          {}\n",
-            last_block_time_str.yellow(),
-            border.color(color).bold(),
-            format!("{}", get_time()).white(),
-            " STARTED BLOCK".color(color),
-            format!("{}", &*current_chain.name).color(color),
-            format!("#{}", height).color(color),
-            //prev_block_time_str.color(color).bold(),
-            border.color(color).bold(),
-            "Base Target:".color(color).bold(),
-            base_target.to_string().color(color),
-        )
-        .as_str(),
-    );
-    let mut actual_target_deadline = target_deadline;
-    if actual_target_deadline == 0 {
-        actual_target_deadline = u64::max_value();
-    }
-    if current_chain.target_deadline.is_some() {
-        actual_target_deadline = current_chain.target_deadline.unwrap()
-    }
-    let mut human_readable_target_deadline = String::from("");
-    match get_dynamic_deadline_for_block(base_target) {
-        (true, _, net_difficulty, dynamic_target_deadline) => {
-            let mut dynamic_target_deadline_warning = String::from("");
-            if dynamic_target_deadline < actual_target_deadline {
-                actual_target_deadline = dynamic_target_deadline;
-            } else {
-                dynamic_target_deadline_warning =
-                    format!(" [Dyn > Max Target! - {}]", dynamic_target_deadline);
-            }
-            if crate::CONF
-                .show_human_readable_deadlines
-                .unwrap_or_default()
-            {
-                human_readable_target_deadline =
-                    format!(" ({})", format_timespan(actual_target_deadline));
-                if dynamic_target_deadline_warning.len() > 0 {
-                    dynamic_target_deadline_warning
-                        .truncate(dynamic_target_deadline_warning.len() - 1);
-                    dynamic_target_deadline_warning.push_str(
-                        format!(" ({})]", format_timespan(dynamic_target_deadline)).as_str(),
+        if current_chain.target_deadline.is_some() {
+            actual_target_deadline = current_chain.target_deadline.unwrap()
+        }
+        let mut human_readable_target_deadline = String::from("");
+        match get_dynamic_deadline_for_block(base_target) {
+            (true, _, net_difficulty, dynamic_target_deadline) => {
+                let mut dynamic_target_deadline_warning = String::from("");
+                if dynamic_target_deadline < actual_target_deadline {
+                    actual_target_deadline = dynamic_target_deadline;
+                } else {
+                    dynamic_target_deadline_warning =
+                        format!(" [Dyn > Max Target! - {}]", dynamic_target_deadline);
+                }
+                if crate::CONF
+                    .show_human_readable_deadlines
+                    .unwrap_or_default()
+                {
+                    human_readable_target_deadline =
+                        format!(" ({})", format_timespan(actual_target_deadline));
+                    if dynamic_target_deadline_warning.len() > 0 {
+                        dynamic_target_deadline_warning
+                            .truncate(dynamic_target_deadline_warning.len() - 1);
+                        dynamic_target_deadline_warning.push_str(
+                            format!(" ({})]", format_timespan(dynamic_target_deadline)).as_str(),
+                        );
+                    }
+                }
+                new_block_message.push_str(
+                    format!("  {}      {}\n",
+                        "Target Deadline:".color(color).bold(),
+                        format!(
+                            "{}{}{}", // (Upstream: {} | Config: {} | Dynamic: {})",
+                            actual_target_deadline,
+                            human_readable_target_deadline,
+                            dynamic_target_deadline_warning,
+                            /*target_deadline,
+                            chain_tdl,
+                            dynamic_target_deadline,*/
+                        )
+                        .color(color)
+                    )
+                    .as_str(),
+                );
+                if !current_chain.is_bhd.unwrap_or_default() {
+                    new_block_message.push_str(
+                        format!("  {}   {}\n",
+                            "Network Difficulty:".color(color).bold(),
+                            format!("{} TiB", net_difficulty).color(color)
+                        )
+                        .as_str(),
+                    );
+                } else {
+                    let bhd_net_diff = get_network_difficulty_for_block(base_target, 300);
+                    new_block_message.push_str(
+                        format!("  {}   {}\n",
+                            "Network Difficulty:".color(color).bold(),
+                            format!(
+                                "{} TiB (Proper for BHD = {} TiB)",
+                                net_difficulty, bhd_net_diff
+                            )
+                            .color(color)
+                        )
+                        .as_str(),
                     );
                 }
             }
-            new_block_message.push_str(
-                format!("  {}      {}\n",
-                    "Target Deadline:".color(color).bold(),
+            (false, _, net_difficulty, _) => {
+                if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
+                    human_readable_target_deadline =
+                        format!(" ({})", format_timespan(actual_target_deadline));
+                }
+                new_block_message.push_str(
                     format!(
-                        "{}{}{}", // (Upstream: {} | Config: {} | Dynamic: {})",
-                        actual_target_deadline,
-                        human_readable_target_deadline,
-                        dynamic_target_deadline_warning,
-                        /*target_deadline,
-                        chain_tdl,
-                        dynamic_target_deadline,*/
-                    )
-                    .color(color)
-                )
-                .as_str(),
-            );
-            if !current_chain.is_bhd.unwrap_or_default() {
-                new_block_message.push_str(
-                    format!("  {}   {}\n",
-                        "Network Difficulty:".color(color).bold(),
-                        format!("{} TiB", net_difficulty).color(color)
-                    )
-                    .as_str(),
-                );
-            } else {
-                let bhd_net_diff = get_network_difficulty_for_block(base_target, 300);
-                new_block_message.push_str(
-                    format!("  {}   {}\n",
-                        "Network Difficulty:".color(color).bold(),
-                        format!(
-                            "{} TiB (Proper for BHD = {} TiB)",
-                            net_difficulty, bhd_net_diff
+                        "  {}      {}\n",
+                        "Target Deadline:".color(color).bold(),
+                        format!("{}{}", // (Upstream: {} | Config: {})",
+                            actual_target_deadline,
+                            human_readable_target_deadline,
+                            /*target_deadline,
+                            chain_tdl,*/
                         )
                         .color(color)
                     )
                     .as_str(),
                 );
-            }
-        }
-        (false, _, net_difficulty, _) => {
-            if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
-                human_readable_target_deadline =
-                    format!(" ({})", format_timespan(actual_target_deadline));
-            }
-            new_block_message.push_str(
-                format!(
-                    "  {}      {}\n",
-                    "Target Deadline:".color(color).bold(),
-                    format!("{}{}", // (Upstream: {} | Config: {})",
-                        actual_target_deadline,
-                        human_readable_target_deadline,
-                        /*target_deadline,
-                        chain_tdl,*/
-                    )
-                    .color(color)
-                )
-                .as_str(),
-            );
-            if !current_chain.is_bhd.unwrap_or_default() {
-                new_block_message.push_str(
-                    format!("  {}   {}\n",
-                        "Network Difficulty:".color(color).bold(),
-                        format!("{} TiB", net_difficulty).color(color)
-                    )
-                    .as_str(),
-                );
-            } else {
-                let bhd_net_diff = get_network_difficulty_for_block(base_target, 300);
-                new_block_message.push_str(
-                    format!("  {}   {}\n",
-                        "Network Difficulty:".color(color).bold(),
-                        format!(
-                            "{} TiB (Proper for BHD = {} TiB)",
-                            net_difficulty, bhd_net_diff
+                if !current_chain.is_bhd.unwrap_or_default() {
+                    new_block_message.push_str(
+                        format!("  {}   {}\n",
+                            "Network Difficulty:".color(color).bold(),
+                            format!("{} TiB", net_difficulty).color(color)
                         )
-                        .color(color)
-                    )
-                    .as_str(),
-                );
+                        .as_str(),
+                    );
+                } else {
+                    let bhd_net_diff = get_network_difficulty_for_block(base_target, 300);
+                    new_block_message.push_str(
+                        format!("  {}   {}\n",
+                            "Network Difficulty:".color(color).bold(),
+                            format!(
+                                "{} TiB (Proper for BHD = {} TiB)",
+                                net_difficulty, bhd_net_diff
+                            )
+                            .color(color)
+                        )
+                        .as_str(),
+                    );
+                }
             }
-        }
-    };
-    new_block_message.push_str(
-        format!("  {} {}\n{}",
-            "Generation Signature:".color(color).bold(),
-            gen_sig.color(color),
-            border.color(color).bold()
-        )
-        .as_str(),
-    );
-    println!("{}", new_block_message);
+        };
+        new_block_message.push_str(
+            format!("  {} {}\n{}",
+                "Generation Signature:".color(color).bold(),
+                gen_sig.color(color),
+                border.color(color).bold()
+            )
+            .as_str(),
+        );
+        debug!("SET BLOCK START PRINTED {} #{}", chain_index, height);
+        let mut block_start_printed_map = BLOCK_START_PRINTED.lock().unwrap();
+        block_start_printed_map.insert(chain_index, height);
+        println!("{}", new_block_message);
+    }
 }
 
 #[allow(dead_code)]
@@ -879,12 +965,9 @@ fn print_nonce_skipped(
     target_deadline: u64,
 ) {
     let current_chain = get_chain_from_index(index).unwrap();
-    //let scoop_num = rand::thread_rng().gen_range(0, 4097);
     let color = get_color(&*current_chain.color);
     let mut deadline_string = deadline.to_string();
-    if crate::CONF
-        .show_human_readable_deadlines
-        .unwrap_or_default()
+    if crate::CONF.show_human_readable_deadlines.unwrap_or_default()
     {
         deadline_string.push_str(format!(" ({})", format_timespan(deadline)).as_str());
     }
@@ -925,9 +1008,7 @@ fn print_nonce_submission(
         //let scoop_num = rand::thread_rng().gen_range(0, 4097);
         let color = get_color(&*current_chain.color);
         let mut deadline_string = deadline.to_string();
-        if crate::CONF
-            .show_human_readable_deadlines
-            .unwrap_or_default()
+        if crate::CONF.show_human_readable_deadlines.unwrap_or_default()
         {
             deadline_string.push_str(format!(" ({})", format_timespan(deadline)).as_str());
         }
