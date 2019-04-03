@@ -541,18 +541,22 @@ fn thread_check_latest_githib_version() {
                 }
                 match Version::parse(tag_name_string.as_str()) {
                     Ok(latest) => {
-                        if current_version < latest && current_version.is_prerelease() && latest.is_prerelease() {
-                            let border = "------------------------------------------------------------------------------------------";
-                            let headline = "  NEW VERSION AVAILABLE ==> ";
-                            println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new release available on GitHub. Please update ASAP!\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
-                                border, headline, tag_name_string, border, border).red());
-                            info!("VERSION CHECK: v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
-                        } else if current_version < latest && !current_version.is_prerelease() && latest.is_prerelease() {
-                            let border = "------------------------------------------------------------------------------------------";
-                            let headline = "  NEW PRE-RELEASE VERSION AVAILABLE ==> ";
-                            println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new pre-release available on GitHub.\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
-                                border, headline, tag_name_string, border, border).red());
-                            info!("VERSION CHECK: Pre-release v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
+                        if current_version < latest {
+                            // if latest version is pre-release and current version is not
+                            if current_version < latest && !current_version.is_prerelease() && latest.is_prerelease() {
+                                let border = "------------------------------------------------------------------------------------------";
+                                let headline = "  NEW PRE-RELEASE VERSION AVAILABLE ==> ";
+                                println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new pre-release available on GitHub.\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
+                                    border, headline, tag_name_string, border, border).red());
+                                info!("VERSION CHECK: Pre-release v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
+                            } else // if latest is not pre-release or current & latest are both pre-release
+                            if !latest.is_prerelease() || (latest.is_prerelease() && current_version.is_prerelease()) {
+                                let border = "------------------------------------------------------------------------------------------";
+                                let headline = "  NEW VERSION AVAILABLE ==> ";
+                                println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new release available on GitHub. Please update ASAP!\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
+                                    border, headline, tag_name_string, border, border).red());
+                                info!("VERSION CHECK: v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
+                            }
                         } else {
                             info!("VERSION CHECK: Up to date. (Current = {}, Latest = {})", VERSION, tag_name_string);
                         }
