@@ -5,6 +5,15 @@
 # Archon
 A collision free, multi-chain proof of capacity mining proxy.
 
+## Contents:
+- [What Archon does](https://github.com/Bloodreaver/Archon#what-archon-does)
+- [What Archon (currently) does not do](https://github.com/Bloodreaver/Archon#what-archon-currently-does-not-do)
+- [Defining your mining chains](https://github.com/Bloodreaver/Archon#defining-your-mining-chains)
+- [All Configuration Options for PoC Chains](https://github.com/Bloodreaver/Archon#all-configuration-options-for-poc-chains)
+- [Global Configuration Options](https://github.com/Bloodreaver/Archon#global-configuration-options)
+- [Sample configuration file](https://github.com/Bloodreaver/Archon#sample-configuration-file)
+- [Donations](https://github.com/Bloodreaver/Archon#donations)
+
 ## What Archon does:
 - Turns a regular single-chain miner into a multi-chain miner via intelligent and customizable queue management
 - Is compatible with Scavenger and Blago proof-of-capacity (PoC) mining software
@@ -326,3 +335,16 @@ pocChains:
     targetDeadline: 7200
     color: blue
 ```
+## Donations
+Donations are much appreciated, you can use any of the following:
+- BURST
+  - `BURST-3N9S-QKST-9NKF-AWSM8`
+- BHD
+  - `3Ey56Foh57CJGcxH7j1QVpSSC4kSuKiZYG`
+- BTC
+  - `14EHjND943ntvy2ectJ28T2hhGt98S2NZr`
+- ETH
+  - `0xca20440cf480e0057a59f70107d951a972de5c0d`
+- LTC
+  - `LYyE7WAqvsDfBsiBsSx5HoER248MTWf5WC`
+- Bitmart Referral Code: `BL4V99` (Link: [http://www.bitmart.com/?r=BL4V99](http://www.bitmart.com/?r=BL4V99))
