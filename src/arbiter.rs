@@ -199,8 +199,8 @@ fn thread_hdpool_websocket(
                 Ok(())
             });
 
-            ws_writer.map(|_| ()).map_err(|_| ())
-                .select(ws_reader.map(|_| ()).map_err(|_| ()))
+            ws_writer.map(|_| ()).map_err(|e| { debug!("HDPool WebSocket Failure: {:?}", e); () })
+                .select(ws_reader.map(|_| ()).map_err(|e| { debug!("HDPool WebSocket Failure: {:?}", e); () }))
                 .then(|_| Ok(()))
 
         }).map_err(|e| {
