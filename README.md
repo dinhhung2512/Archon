@@ -59,20 +59,56 @@ Your PoC chains are defined in the `archon.yaml` configuration file, [see below]
 
 Note: You must have at least one PoC Chain defined, or Archon will have nothing to do!
 
-Example layout, using the bare minimum information required by Archon:
+Example chain layouts for different purposes, using the bare minimum information required by Archon:
 ```yaml
 pocChains:
+# BHD via HDProxy
+#  (You must have HDProxy running on the same machine as Archon with these settings!)
   - name: First Chain
     priority: 0
     url: "http://localhost:60100"
-    isBhd: true
-    isPool: true
+    isHdpool: true
     color: cyan
+
+# BHD via HDPool (Direct - no other applications needed)
   - name: Second Chain
     priority: 1
+    accountKey: 1 2 3, this is my account key
+    isHdpool: true
+    color: blue
+
+# BHD via HPool
+  - name: Third Chain
+    priority: 2
+    accountKey: 1 2 3, this is my account key
+    isHpool: true
+    url: "http://bhd.hpool.com" # not sure if this URL is correct, it's down as of writing this
+    color: yellow
+
+# BHD Solo
+#  (You must have a BHD wallet running in mining mode / with RPC server on, 
+#   on the same machine as Archon is running on with these settings!)
+  - name: Fourth Chain
+    priority: 3
+    isBhd: true
+    url: "http://localhost:8732"
+    color: green
+
+# Burst Pool mining via voiplanparty.com
+  - name: Fifth Chain
+    priority: 4
     url: "http://voiplanparty.com:8124"
     isPool: true
     color: magenta
+
+# Burst Solo mining
+#  (You must have a Burst wallet running on the same machine as Archon with these settings!)
+  - name: Sixth Chain
+    priority: 5
+    url: "http://localhost:8125"
+    numericIdToPassphrase:
+      12345678901234567890: passphrase for this numeric id goes here
+    color: cyan
 ```
 
 ## All Configuration Options for PoC Chains
@@ -106,7 +142,7 @@ If you need more control over your chains, you can add any of these parameters t
 - `url`
   - Required; **but may be left out if the chain is for `HDPool`.**
   - Must be a fully qualified URI including protocol, domain/IP and port, eg: `"http://voiplanparty.com:8124"`
-  - If you wish to mine via HDPool **and use HDProxy**, you may specify your HDProxy URL here (eg `url: "http://localhost:60100"`) and Archon will use that instead of communicating directly with the pool.
+  - If you wish to mine via HDPool **and use HDProxy**, do not specify `accountKey`, set `isHdpool` to `true`, and set `url` to your HDProxy URL, (eg `url: "http://localhost:60100"` if HDProxy is running on the same machine as Archon)
 - `historicalRounds`
   - Optional. Default = 360
   - Not used at the moment, but will be used later for statistics displayed in the Web UI (which is not implemented currently).
@@ -115,7 +151,7 @@ If you need more control over your chains, you can add any of these parameters t
   - Set this to the desired maximum deadline. Any deadlines submitted to Archon for this chain which are higher than this value will not be sent upstream.
 - `numericIdToPassphrase`
   - Optional.
-  - Use this section if this chain is for solo mining BURST.
+  - Use this if this chain is for solo mining BURST.
   - Example format:
 ```yaml
 numericIdToPassphrase:
