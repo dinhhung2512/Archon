@@ -98,8 +98,8 @@ fn thread_handle_hdpool_nonce_submissions(
             Ok(submit_nonce_info) => {
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
                 let unix_timestamp = Local::now().timestamp();
-                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{} v{}","submit":[{{{},{},{},{},{}}}],}}}}"#, account_key, capacity_gb, miner_mark, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.block_height.unwrap_or_default(), submit_nonce_info.nonce, submit_nonce_info.deadline, unix_timestamp);
-                tx.unbounded_send(Message::Text(message.clone().into())).unwrap();
+                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{} v{}","submit":[{},{},{},{},{}]}}}}"#, account_key, capacity_gb, miner_mark, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.block_height.unwrap_or_default(), submit_nonce_info.nonce, submit_nonce_info.deadline, unix_timestamp);
+                if tx.unbounded_send(Message::Text(message.clone().into())).is_ok() {}
                 debug!("HDPool Websocket: SubmitNonce message: {}", message);
             },
             Err(_) => {}
@@ -132,7 +132,10 @@ fn thread_hdpool_websocket(
                 crate::VERSION,
                 miner_mark,
                 capacity_gb);
-            txc.unbounded_send(Message::Text(data.into())).unwrap();
+            match txc.unbounded_send(Message::Text(data.into())) {
+                Ok(_) => {},
+                Err(why) => warn!("HDPool Websocket Heartbeat failure: {:?}.", why),
+            };
             thread::sleep(std::time::Duration::from_secs(5));
         }
     });
@@ -156,24 +159,28 @@ fn thread_hdpool_websocket(
         });
 
         let ws_reader = stream.for_each(move |message: Message| {
-            let message_str = message.to_text().unwrap();
-            match message_str.to_lowercase().as_str() {
-                r#"{"cmd":"poolmgr.heartbeat"}"# => {
-                    trace!("Heartbeat acknowledged.");
-                },
-                _ => {
-                    if message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info""#) || message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info"#) {
-                        let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
-                        let mining_info = parsed_message_str["para"].to_string().clone();
-                        trace!("HDPool WebSocket: NEW BHD BLOCK: {}", mining_info);
-                        match mining_info_sender.send(mining_info) {
-                            Ok(_) => {}
-                            Err(_) => {}
-                        }
-                    } else {
-                        debug!("HDPool WebSocket: Received unknown message: {}", message);
+            match message.to_text() {
+                Ok(message_str) => { 
+                    match message_str.to_lowercase().as_str() {
+                        r#"{"cmd":"poolmgr.heartbeat"}"# => {
+                            trace!("Heartbeat acknowledged.");
+                        },
+                        _ => {
+                            if message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info""#) || message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info"#) {
+                                let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
+                                let mining_info = parsed_message_str["para"].to_string().clone();
+                                trace!("HDPool WebSocket: NEW BHD BLOCK: {}", mining_info);
+                                match mining_info_sender.send(mining_info) {
+                                    Ok(_) => {}
+                                    Err(_) => {}
+                                }
+                            } else {
+                                debug!("HDPool WebSocket: Received unknown message: {}", message);
+                            }
+                        },
                     }
                 },
+                Err(_) => {}
             }
 
             Ok(())
