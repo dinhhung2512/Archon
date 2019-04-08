@@ -7,7 +7,7 @@ A collision free, multi-chain proof of capacity mining proxy.
 
 ## Contents:
 - [What Archon does](https://github.com/Bloodreaver/Archon#what-archon-does)
-- [What Archon (currently) does not do](https://github.com/Bloodreaver/Archon#what-archon-currently-does-not-do)
+- [What Archon does not do](https://github.com/Bloodreaver/Archon#what-archon-does-not-do)
 - [Defining your mining chains](https://github.com/Bloodreaver/Archon#defining-your-mining-chains)
 - [All Configuration Options for PoC Chains](https://github.com/Bloodreaver/Archon#all-configuration-options-for-poc-chains)
 - [Global Configuration Options](https://github.com/Bloodreaver/Archon#global-configuration-options)
@@ -22,6 +22,7 @@ A collision free, multi-chain proof of capacity mining proxy.
   - Collision free
   - Can run in *priority* __or__ *first in, first out* queuing modes
   - Can interrupt lower priority blocks (toggleable)
+  - Compatible with HDPool mining (directly, without the use of HDProxy or another program)
   - [Customizable per-chain settings](https://github.com/Bloodreaver/Archon#all-configuration-options-for-poc-chains):
     - Dynamic Deadlines (auto adjust for network difficulty based on total plot capacity)
     - Target deadline (for the entire chain)
@@ -30,9 +31,8 @@ A collision free, multi-chain proof of capacity mining proxy.
     - Requeue interrupted blocks (toggleable)
     - Adjustable *getMiningInfo* interval
 
-## What Archon (currently) does not do:
+## What Archon does not do:
 - Mine
-- Replace HDProxy
 - Provide lambos
 
 ## How it works
