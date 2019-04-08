@@ -39,7 +39,8 @@ impl MiningInfo {
             Ok(mi) => {
                 return (true, mi);
             }
-            Err(_) => {
+            Err(why) => {
+                warn!("MiningInfo::from_json({}): Failed parse: {:?}", json, why);
                 return (false, MiningInfo::empty());
             }
         }

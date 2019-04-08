@@ -95,7 +95,7 @@ fn main() {
     let app_name = uppercase_first(APP_NAME);
 
     // setup logging
-    let console_logging_info = setup_logging();
+    let (archon_logging_info, archon_log_warn, dep_logging_info, dep_log_warn) = setup_logging();
 
     info!("{} v{} started", app_name, VERSION);
 
@@ -111,14 +111,43 @@ fn main() {
         "Discord Invite:".red(),
         "https://discord.gg/ZdVbrMn".yellow(),
     );
-    println!("    {} {}\n      {}\n",
+    println!("    {} {}",
         "With special thanks to:".red().bold(),
-        "Haitch | Avanth | Karralie | Romanovski".red(),
-        "Thanks guys <3".magenta(),
+        "Haitch | Avanth | Karralie | Romanovski".red()
     );
-
+    println!("      {}",
+        "Thanks guys! <3".magenta(),
+    );
     if crate::CONF.poc_chains.is_some() {
-        println!("{}", console_logging_info);
+        let archon_logging_warning = match archon_log_warn {
+            true => "\n    WARNING: Log files can get very large, very quickly using this level!",
+            false => "",
+        };
+        println!("\n  {} {} {}", 
+            get_time().white(), 
+            "Config:".red(), 
+            format!("{} {}{}",
+                "Archon Logging Level:".green(),
+                archon_logging_info.yellow(),
+                archon_logging_warning.red()
+            )
+        );
+
+        if dep_logging_info.len() > 0 {
+            let dep_logging_warning = match dep_log_warn {
+                true => "\n    WARNING: Log files can get very large, very quickly using this level!",
+                false => "",
+            };
+            println!("  {} {} {}", 
+                get_time().white(), 
+                "Config:".red(), 
+                format!("{} {}{}",
+                    "Dependency Logging Level:".green(),
+                    dep_logging_info.yellow(),
+                    dep_logging_warning.red()
+                )
+            );
+        }
 
         println!("  {} {} {}",
             get_time().white(),
@@ -128,8 +157,7 @@ fn main() {
                 format!("http://{}:{}",
                     crate::CONF.web_server_bind_address,
                     crate::CONF.web_server_port
-                )
-                .yellow()
+                ).yellow()
             )
         );
         if crate::CONF.priority_mode.unwrap_or(true) {
@@ -142,30 +170,21 @@ fn main() {
                 println!("  {} {} {}",
                     get_time().white(),
                     "Config:".red(),
-                    format!("{} {}",
-                        "Interrupt Lower Priority Blocks:".green(),
-                        "Yes".yellow()
-                    )
+                    format!("{} {}", "Interrupt Lower Priority Blocks:".green(), "Yes".yellow())
                 );
             } else {
                 // interrupt lower priority blocks off
                 println!("  {} {} {}",
                     get_time().white(),
                     "Config:".red(),
-                    format!("{} {}",
-                        "Interrupt Lower Priority Blocks:".green(),
-                        "No".yellow()
-                    )
+                    format!("{} {}", "Interrupt Lower Priority Blocks:".green(), "No".yellow())
                 );
             }
         } else {
             println!("  {} {} {}",
                 get_time().white(),
                 "Config:".red(),
-                format!("{} {}",
-                    "Queuing Mode:".green(),
-                    "First In, First Out".yellow()
-                )
+                format!("{} {}", "Queuing Mode:".green(), "First In, First Out".yellow())
             );
         }
         println!("  {} {} {}",
@@ -203,28 +222,6 @@ fn main() {
         let mut account_key_warnings = String::from("");
         for inner in &crate::CONF.poc_chains {
             for chain in inner {
-                if chain.is_hdpool.unwrap_or_default() && chain.is_hpool.unwrap_or_default() {
-                    // fatal error - can't have chain defined as for both HPOOL and HDPOOL
-                    println!("\n  {}", format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name).red().underline());
-                    error!("The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name);
-
-                    println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
-
-                    let mut blah = String::new();
-                    std::io::stdin().read_line(&mut blah).expect("FAIL");
-                    exit(0);
-                }
-                // check if account key is defined if the chain is for mining via hpool or hdpool
-                let account_key = chain.account_key.clone().unwrap_or(String::from(""));
-                if chain.account_key.is_none() || account_key.len() == 0 {
-                    if chain.is_hpool.unwrap_or_default() {
-                        warn!("Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name);
-                        account_key_warnings.push_str(format!("    Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
-                    } else if chain.is_hdpool.unwrap_or_default() {
-                        warn!("Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name);
-                        account_key_warnings.push_str(format!("    Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
-                    }
-                }
                 if chain.numeric_id_to_passphrase.is_some()
                     && (chain.is_pool.unwrap_or_default()
                         || chain.is_bhd.unwrap_or_default()
@@ -243,26 +240,51 @@ fn main() {
                     }
                 }
                 if chain.enabled.unwrap_or(true) {
+                    let chain_color = get_color(&*chain.color);
                     if get_num_chains_with_priority(chain.priority) > 1 {
                         multiple_same_priority_chains = true;
+                    }
+                    if chain.is_hdpool.unwrap_or_default() && chain.is_hpool.unwrap_or_default() {
+                        // fatal error - can't have chain defined as for both HPOOL and HDPOOL
+                        println!("\n  {}", format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name).red().underline());
+                        error!("The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name);
+
+                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+
+                        let mut blah = String::new();
+                        std::io::stdin().read_line(&mut blah).expect("FAIL");
+                        exit(0);
+                    }
+                    // check if account key is defined if the chain is for mining via hpool or hdpool
+                    let account_key = chain.account_key.clone().unwrap_or(String::from(""));
+                    if chain.account_key.is_none() || account_key.len() == 0 {
+                        if chain.is_hpool.unwrap_or_default() {
+                            warn!("Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name);
+                            account_key_warnings.push_str(format!("    Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
+                        } else if chain.is_hdpool.unwrap_or_default() {
+                            warn!("Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name);
+                            account_key_warnings.push_str(format!("    Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
+                        }
                     }
                     chain_counter += 1;
                     let chain_tdl = chain.target_deadline.unwrap_or_default();
                     let mut human_readable_target_deadline = String::from("");
-                    if crate::CONF
-                        .show_human_readable_deadlines
-                        .unwrap_or_default()
-                    {
-                        human_readable_target_deadline =
-                            format!(" ({})", format_timespan(chain_tdl));
+                    if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
+                        human_readable_target_deadline = format!(" ({})", format_timespan(chain_tdl));
                     }
                     let chain_tdl_str;
                     if chain.use_dynamic_deadlines.unwrap_or_default() {
                         chain_tdl_str = String::from("Dynamic");
                     } else if chain_tdl == 0 {
-                        chain_tdl_str = String::from("None");
+                        chain_tdl_str = String::from("Not Set");
                     } else {
                         chain_tdl_str = format!("{}{}", chain_tdl, human_readable_target_deadline);
+                    }
+                    let chain_url;
+                    if chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some() {
+                        chain_url = "HDPOOL (WebSocket Direct)";
+                    } else {
+                        chain_url = &chain.url;
                     }
                     if crate::CONF.priority_mode.unwrap_or(true) {
                         if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
@@ -270,52 +292,40 @@ fn main() {
                             if !chain.requeue_interrupted_blocks.unwrap_or(true) {
                                 requeue_str = "No";
                             }
-                            println!("  {} {}  {} {}",
-                                get_time().white(),
-                                "Config:".red(),
-                                format!("#{}:", chain_counter).green(),
-                                format!("{} {} {} {} {} {} {} {} {} {}",
-                                    "Priority:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", &chain.priority).color(get_color(&*chain.color)),
-                                    "Name:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", &*chain.name).color(get_color(&*chain.color)),
-                                    "TDL:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", chain_tdl_str).color(get_color(&*chain.color)),
-                                    "URL:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", &*chain.url).color(get_color(&*chain.color)),
-                                    "Requeue:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", requeue_str).color(get_color(&*chain.color)),
+                            println!("{}",
+                                format!("    {}\n      {} @ {}\n        {} {} | {} {} | {} {}",
+                                    format!("Chain #{}:", chain_counter).color(chain_color),
+                                    format!("{}", &*chain.name).color(chain_color).bold(),
+                                    format!("{}", &*chain_url).color(chain_color),
+                                    "Priority:".color(chain_color).bold(),
+                                    format!("#{}", &chain.priority + 1).color(chain_color),
+                                    "Target Deadline:".color(chain_color).bold(),
+                                    format!("{}", chain_tdl_str).color(chain_color),
+                                    "Requeue:".color(chain_color).bold(),
+                                    format!("{}", requeue_str).color(chain_color),
                                 )
                             );
                         } else {
-                            println!("  {} {}  {} {}",
-                                get_time().white(),
-                                "Config:".red(),
-                                format!("#{}:", chain_counter).green(),
-                                format!("{} {} {} {} {} {} {} {}",
-                                    "Priority:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", &chain.priority).color(get_color(&*chain.color)),
-                                    "Name:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", &*chain.name).color(get_color(&*chain.color)),
-                                    "TDL:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", chain_tdl_str).color(get_color(&*chain.color)),
-                                    "URL:".color(get_color(&*chain.color)).bold(),
-                                    format!("{}", &*chain.url).color(get_color(&*chain.color)),
+                            println!("{}",
+                                format!("    {}\n      {} @ {}\n        {} {} | {} {}",
+                                    format!("Chain #{}:", chain_counter).color(chain_color),
+                                    format!("{}", &*chain.name).color(chain_color).bold(),
+                                    format!("{}", &*chain_url).color(chain_color),
+                                    "Priority:".color(chain_color).bold(),
+                                    format!("#{}", &chain.priority + 1).color(chain_color),
+                                    "Target Deadline:".color(chain_color).bold(),
+                                    format!("{}", chain_tdl_str).color(chain_color),
                                 )
                             );
                         }
                     } else {
-                        println!("  {} {}  {} {}",
-                            get_time().white(),
-                            "Config:".red(),
-                            format!("#{}:", chain_counter).green(),
-                            format!("{} {} {} {} {} {}",
-                                "Name:".color(get_color(&*chain.color)).bold(),
-                                format!("{}", &*chain.name).color(get_color(&*chain.color)),
-                                "TDL:".color(get_color(&*chain.color)).bold(),
-                                format!("{}", chain_tdl_str).color(get_color(&*chain.color)),
-                                "URL:".color(get_color(&*chain.color)).bold(),
-                                format!("{}", &*chain.url).color(get_color(&*chain.color)),
+                        println!("{}",
+                            format!("    {}\n      {} @ {}\n        {} {}",
+                                format!("Chain #{}:", chain_counter).color(chain_color),
+                                format!("{}", &*chain.name).color(chain_color).bold(),
+                                format!("{}", &*chain_url).color(chain_color),
+                                "Target Deadline:".color(chain_color).bold(),
+                                format!("{}", chain_tdl_str).color(chain_color),
                             )
                         );
                     }
@@ -434,49 +444,43 @@ fn setup_ansi_support() {
 #[cfg(not(target_os = "windows"))]
 fn setup_ansi_support() {}
 
-fn setup_logging() -> String {
-    let logging_level = CONF.logging_level.clone().unwrap_or(String::from("info")).to_lowercase();
-    let logging_level_warning;
-    let log_level = match logging_level.as_str() {
+fn get_logging_level_from_string(level_string: &str, default_level: Option<log::LevelFilter>) -> log::LevelFilter {
+    match level_string {
         "off" => {
-            logging_level_warning = "";
             log::LevelFilter::Off
         },
         "trace" => {
-            logging_level_warning = " (Warning: Log files will get very large, very quickly using this level!)";
             log::LevelFilter::Trace
         },
         "debug" => {
-            logging_level_warning = " (Warning: Log files will get very large, very quickly using this level!)";
             log::LevelFilter::Debug
         },
         "info" => {
-            logging_level_warning = "";
             log::LevelFilter::Info
         },
         "warn" => {
-            logging_level_warning = "";
             log::LevelFilter::Warn
         },
         "error" => {
-            logging_level_warning = "";
             log::LevelFilter::Error
         },
-        _ => {
-            logging_level_warning = "";
-            log::LevelFilter::Info
-        },
-    };
-    let console_logging_message = format!("  {} {} {}",
-        get_time().white(),
-        "Config:".red(),
-        format!("{} {}{}",
-            "Logging Level:".green(),
-            format!("{}", uppercase_first(logging_level.as_str())).yellow(),
-            logging_level_warning.red(),
-        )
-    );
+        _ => default_level.unwrap_or(log::LevelFilter::Info),
+    }
+}
+
+fn setup_logging() -> (String, bool, String, bool) {
+    let logging_level = CONF.logging_level.clone().unwrap_or(String::from("info")).to_lowercase();
+    let log_level = get_logging_level_from_string(&logging_level, None);
+    // set warning if debug|trace level
+    let logging_level_warning = log_level == log::LevelFilter::Debug || log_level == log::LevelFilter::Trace;
+    let console_logging_message = format!("{}", format!("{}", uppercase_first(logging_level.as_str())).yellow());
     if log_level != log::LevelFilter::Off {
+        // setup dependency logging level
+        let dep_logging_level = CONF.dependency_logging_level.clone().unwrap_or(String::from("info")).to_lowercase();
+        let dependency_log_level = get_logging_level_from_string(&dep_logging_level, None);
+        // set warning if debug|trace level
+        let dep_logging_level_warning = dependency_log_level == log::LevelFilter::Debug || dependency_log_level == log::LevelFilter::Trace;
+        let dependency_console_logging_message = format!("{}", format!("{}", uppercase_first(dep_logging_level.as_str())).yellow());
         // create logs directory
         if std::fs::create_dir("logs").is_ok() {}
         // grab number of files to keep in rotation from loaded config
@@ -505,7 +509,14 @@ fn setup_logging() -> String {
                         target_width = 30
                     ))
                 })
-                .level(log_level)
+                .level(dependency_log_level)
+                .level_for("archon", log_level)
+                .level_for("archon::web", log_level)
+                .level_for("archon::arbiter", log_level)
+                .level_for("archon::upstream", log_level)
+                .level_for("archon::hdpool", log_level)
+                .level_for("archon::config", log_level)
+                .level_for("archon::error", log_level)
                 .chain(log_file)
                 .apply() {
                     Ok(_) => {},
@@ -514,8 +525,10 @@ fn setup_logging() -> String {
             },
             Err(_) => {}
         }
+        (console_logging_message, logging_level_warning, dependency_console_logging_message, dep_logging_level_warning)
+    } else {
+        (console_logging_message, logging_level_warning, String::from(""), false)
     }
-    console_logging_message
 }
 
 fn thread_check_latest_githib_version() {
@@ -607,7 +620,7 @@ fn get_cached_mining_info() -> Option<(u8, u32, String)> {
 fn add_mining_info_to_cache(index: u8, mining_info: MiningInfo) -> String {
     let mut cache_map = MINING_INFO_CACHE.lock().unwrap();
     let mining_info_json = mining_info.to_json().to_string();
-    debug!("ADD CACHE - Chain #{} Block #{}: {:?}", index, mining_info.height, mining_info);
+    debug!("CACHE - Chain #{} Block #{}: {:?}", index, mining_info.height, mining_info);
     cache_map.insert(index, (mining_info.height, mining_info_json.clone()));
     mining_info_json
 }
@@ -616,11 +629,11 @@ fn is_block_start_printed(index: u8, height: u32) -> bool {
     let block_start_printed_map = BLOCK_START_PRINTED.lock().unwrap();
     match block_start_printed_map.get(&index) {
         Some(matched_height) => {
-            debug!("IsBlockStartPrinted - Chain #{} Block #{} = {} [Matched Height={}]", index, height, *matched_height == height, *matched_height);
+            trace!("IsBlockStartPrinted - Chain #{} Block #{} = {} [Matched Height={}]", index, height, *matched_height == height, *matched_height);
             *matched_height == height
         },
         _ => {
-            debug!("IsBlockStartPrinted - Chain #{} Block #{} = false (No result for that chain yet)", index, height);
+            trace!("IsBlockStartPrinted - Chain #{} Block #{} = false (No result for that chain yet)", index, height);
             false
         }
     }
@@ -952,7 +965,7 @@ fn print_block_started(
             )
             .as_str(),
         );
-        debug!("SET BLOCK START PRINTED {} #{}", chain_index, height);
+        trace!("SET BLOCK START PRINTED {} #{}", chain_index, height);
         let mut block_start_printed_map = BLOCK_START_PRINTED.lock().unwrap();
         block_start_printed_map.insert(chain_index, height);
         println!("{}", new_block_message);

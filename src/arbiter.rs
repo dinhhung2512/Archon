@@ -1,10 +1,13 @@
 use chrono::{DateTime, Local};
 use colored::Colorize;
 use reqwest;
+use futures::sync::mpsc;
+use futures::{Future, Stream};
+use tokio_tungstenite::connect_async;
+use url::Url;
+use tungstenite::Message;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::mpsc as std_mpsc;
 use std::thread;
 
 use crate::config::PocChain;
@@ -52,22 +55,19 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
 }
 
 pub fn thread_arbitrate() {
-    let new_mining_info_found = Arc::new(AtomicBool::new(false));
-    let (mining_info_sender, mining_info_receiver) = mpsc::channel();
+    let (mining_info_sender, mining_info_receiver) = std_mpsc::channel();
     // start polling for mining info for each chain
     for inner in &crate::CONF.poc_chains {
         for chain in inner {
             if chain.enabled.unwrap_or(true) {
                 let new_sender = mining_info_sender.clone();
-                let new_mining_info_found = new_mining_info_found.clone();
                 let index = super::get_chain_index(&*chain.url, &*chain.name);
                 create_chain_nonce_submission_client(index);
                 thread::spawn(move || {
                     thread_get_mining_info(
-                        reqwest::Client::new(),
+                        reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap(),
                         chain.clone(),
                         new_sender,
-                        new_mining_info_found,
                     );
                 });
             }
@@ -86,11 +86,89 @@ pub fn thread_arbitrate() {
     }
 }
 
+fn thread_hdpool_websocket(
+    chain_index: u8,
+    chain: PocChain,
+    mining_info_sender: std_mpsc::Sender<String>,
+) {
+    let (tx, rx) = mpsc::unbounded();
+    let rx = rx.map_err(|_| panic!());
+    let txc = tx.clone();
+
+    // set vars
+    let addr = Url::parse("wss://hdminer.hdpool.com").unwrap();
+    let miner_mark = "20190327";
+    let account_key = chain.account_key.clone().unwrap_or(String::from(""));
+
+    //Spawn thread for the heartbeat loop to run in.
+    thread::spawn(move || {
+        loop {
+            let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
+            let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{} v{}","miner_mark":"{}","capacity":{}}}}}"#,
+                account_key,
+                crate::uppercase_first(crate::APP_NAME),
+                crate::VERSION,
+                miner_mark,
+                capacity_gb);
+            txc.unbounded_send(Message::Text(data.into())).unwrap();
+            thread::sleep(std::time::Duration::from_secs(5));
+        }
+    });
+
+    let client = connect_async(addr).and_then(move |(ws_stream, _)| {
+        use futures::Sink;
+        let (mut sink, stream) = ws_stream.split();
+
+        sink.start_send(Message::Text(r#"{"cmd":"mining_info"}"#.into())).unwrap();
+        sink.start_send(Message::Text(r#"{"cmd":"poolmgr.mining_info"}"#.into())).unwrap();
+
+        let ws_writer = rx.fold(sink, |mut sink, msg: Message| {
+            sink.start_send(msg).unwrap();
+            Ok(sink)
+        });
+
+        let ws_reader = stream.for_each(move |message: Message| {
+            let message_str = message.to_text().unwrap();
+            match message_str.to_lowercase().as_str() {
+                r#"{"cmd":"poolmgr.heartbeat"}"# => {
+                    trace!("Heartbeat acknowledged.");
+                },
+                _ => {
+                    if message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info""#) || message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info"#) {
+                        let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
+                        let mining_info = parsed_message_str["para"].to_string().clone();
+                        trace!("HDPool WebSocket: NEW BHD BLOCK: {}", mining_info);
+                        match mining_info_sender.send(mining_info) {
+                            Ok(_) => {}
+                            Err(_) => {}
+                        }
+                    } else {
+                        debug!("HDPool WebSocket: Received unknown message: {}", message);
+                    }
+                },
+            }
+
+            Ok(())
+        });
+
+        ws_writer.map(|_| ()).map_err(|_| ())
+            .select(ws_reader.map(|_| ()).map_err(|_| ()))
+            .then(|_| Ok(()))
+
+    }).map_err(|e| {
+        use std::io;
+
+        println!("Error during the websocket handshake occured: {}", e);
+        io::Error::new(io::ErrorKind::Other, e);
+    });
+
+    tokio::runtime::run(client.map_err(|e| println!("{:?}", e)));
+}
+
 fn thread_get_mining_info(
     client: reqwest::Client,
     chain: PocChain,
-    sender: mpsc::Sender<MiningInfoPollingResult>,
-    new_mining_info_found: Arc<AtomicBool>,
+    sender: std_mpsc::Sender<MiningInfoPollingResult>,
 ) {
     let mut url = String::from(&*chain.url);
     url.push_str("/burst?requestType=getMiningInfo");
@@ -98,91 +176,121 @@ fn thread_get_mining_info(
     let mut request_failure = false;
     let mut last_request_success: DateTime<Local> = Local::now();
     let mut last_outage_reminder_sent: DateTime<Local> = Local::now();
+    let chain_index = super::get_chain_index(&*chain.url, &*chain.name);
+
+    // setup mpsc channel to receive signal when new mining info is received from HDPool websocket
+    let (hdpool_mining_info_sender, hdpool_mining_info_receiver) = std_mpsc::channel();
+    
+    /* BEGIN ASYNC WEBSOCK STUFF. */
+    if chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some() {
+        // Spawn thread for the tokio reactor to run in.
+        let chain_copy = chain.clone();
+        thread::spawn(move || {
+            thread_hdpool_websocket(chain_index, chain_copy, hdpool_mining_info_sender.clone());
+        });
+    }
+    /* END ASYNC WEBSOCK STUFF. */
+
     loop {
-        match client
-            .get(url.as_str())
-            .header(
-                "User-Agent",
-                format!(
-                    "{} v{}",
-                    super::uppercase_first(super::APP_NAME),
-                    super::VERSION
-                ),
-            )
-            .send()
-        {
-            Ok(mut resp) => {
-                match &resp.text() {
-                    Ok(text) => {
-                        match MiningInfo::from_json(text) {
-                            (true, _mining_info) => {
-                                if request_failure {
-                                    request_failure = false;
-                                    let outage_duration = Local::now() - last_request_success;
-                                    let outage_duration_str = super::format_timespan(
-                                        outage_duration.num_seconds() as u64,
-                                    );
-                                    println!("  {} {} {}",
-                                        super::get_time().white(),
-                                        format!("{}", &*chain.name).color(&*chain.color),
-                                        format!("Outage over, total time unavailable: {}.", outage_duration_str).green()
-                                    );
-                                    info!("{} - Outage over, total time unavailable: {}.", &*chain.name, outage_duration_str);
-                                }
-                                last_request_success = Local::now();
-                                if (chain.allow_lower_block_heights.unwrap_or_default()
-                                    && _mining_info.height != last_block_height)
-                                    || _mining_info.height > last_block_height
-                                {
-                                    last_block_height = _mining_info.height;
-                                    let _mining_info_polling_result = MiningInfoPollingResult {
-                                        mining_info: _mining_info.clone(),
-                                        chain: chain.clone(),
-                                    };
-                                    new_mining_info_found.store(true, Ordering::Relaxed);
-                                    match sender.send(_mining_info_polling_result) {
-                                        Ok(_) => {}
-                                        Err(_) => {}
-                                    }
-                                }
-                                drop(_mining_info);
+        let is_hdpool = chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some();
+        let mining_info_response = match is_hdpool {
+            true => {
+                match hdpool_mining_info_receiver.try_recv() {
+                    Ok(mining_info) => mining_info,
+                    Err(_) => String::from(""),
+                }
+            },
+            false => {
+                let mut url = String::from(chain.clone().url);
+                url.push_str("/burst?requestType=getMiningInfo");
+                match client
+                    .get(url.as_str())
+                    .header("User-Agent", 
+                        format!("{} v{}", 
+                            super::uppercase_first(super::APP_NAME), 
+                            super::VERSION
+                        )
+                    )
+                    .send() {
+                    Ok(mut resp) => {
+                        match &resp.text() {
+                            Ok(text) => text.to_string(),
+                            Err(why) => {
+                                warn!("GetMiningInfo({}): Could not get response text: {}", &*chain.name, why);
+                                String::from("")
                             }
-                            (false, _mining_info) => {
-                                drop(_mining_info);
-                            }
-                        };
-                    }
-                    Err(_) => {}
-                };
-            }
-            Err(why) => {
-                if !request_failure {
-                    request_failure = true;
-                    last_outage_reminder_sent = Local::now();
-                    println!("  {} {} {}",
-                        super::get_time().white(),
-                        format!("{}", &*chain.name).color(&*chain.color),
-                        "Could not retrieve mining info!".red()
-                    );
-                    info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, why);
-                } else {
-                    let outage_duration = Local::now() - last_request_success;
-                    let last_reminder = Local::now() - last_outage_reminder_sent;
-                    if last_reminder.num_seconds()
-                        >= crate::CONF.outage_status_update_interval.unwrap_or(300u16) as i64
-                    {
-                        last_outage_reminder_sent = Local::now();
-                        let outage_duration_str =
-                            super::format_timespan(outage_duration.num_seconds() as u64);
-                        println!("  {} {} {}",
-                            super::get_time().white(),
-                            format!("{} - Last: {}", &*chain.name, last_block_height).color(&*chain.color),
-                            format!("Outage continues, time unavailable so far: {}.", outage_duration_str).red()
-                        );
-                        info!("{} - Last: {} - Outage continues, time unavailable so far: {}", &*chain.name, last_block_height, outage_duration_str);
+                        }
+                    },
+                    Err(why) => {
+                        warn!("GetMiningInfo({}): Request failed: {}", &*chain.name, why);
+                        String::from("")
                     }
                 }
             }
+        };
+        if mining_info_response.len() > 0 {
+            match MiningInfo::from_json(mining_info_response.as_str()) {
+                (true, _mining_info) => {
+                    if request_failure {
+                        request_failure = false;
+                        let outage_duration = Local::now() - last_request_success;
+                        let outage_duration_str = super::format_timespan(
+                            outage_duration.num_seconds() as u64,
+                        );
+                        println!("  {} {} {}",
+                            super::get_time().white(),
+                            format!("{}", &*chain.name).color(&*chain.color),
+                            format!("Outage over, total time unavailable: {}.", outage_duration_str).green()
+                        );
+                        info!("{} - Outage over, total time unavailable: {}.", &*chain.name, outage_duration_str);
+                    }
+                    last_request_success = Local::now();
+                    if (chain.allow_lower_block_heights.unwrap_or_default()
+                        && _mining_info.height != last_block_height)
+                        || _mining_info.height > last_block_height
+                    {
+                        last_block_height = _mining_info.height;
+                        let _mining_info_polling_result = MiningInfoPollingResult {
+                            mining_info: _mining_info.clone(),
+                            chain: chain.clone(),
+                        };
+                        match sender.send(_mining_info_polling_result) {
+                            Ok(_) => {}
+                            Err(_) => {}
+                        }
+                    }
+                    drop(_mining_info);
+                }
+                (false, _mining_info) => {
+                    if !request_failure {
+                        request_failure = true;
+                        last_outage_reminder_sent = Local::now();
+                        println!("  {} {} {}",
+                            super::get_time().white(),
+                            format!("{}", &*chain.name).color(&*chain.color),
+                            "Could not retrieve mining info!".red()
+                        );
+                        info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, mining_info_response);
+                    } else {
+                        let outage_duration = Local::now() - last_request_success;
+                        let last_reminder = Local::now() - last_outage_reminder_sent;
+                        if last_reminder.num_seconds()
+                            >= crate::CONF.outage_status_update_interval.unwrap_or(300u16) as i64
+                        {
+                            last_outage_reminder_sent = Local::now();
+                            let outage_duration_str =
+                                super::format_timespan(outage_duration.num_seconds() as u64);
+                            println!("  {} {} {}",
+                                super::get_time().white(),
+                                format!("{} - Last: {}", &*chain.name, last_block_height).color(&*chain.color),
+                                format!("Outage continues, time unavailable so far: {}.", outage_duration_str).red()
+                            );
+                            info!("{} - Last: {} - Outage continues, time unavailable so far: {}", &*chain.name, last_block_height, outage_duration_str);
+                        }
+                    }
+                    drop(_mining_info);
+                }
+            };
         }
         let mut interval = chain.get_mining_info_interval.unwrap_or(3) as u64;
         if interval < 1 {
@@ -311,7 +419,7 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
         // set the queue status for this chain back by 1, thereby "requeuing" it
         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
         chain_queue_status_map.insert(current_chain_index, (requeued_height - 1, requeued_time));
-        debug!("SET START - Chain #{} Block #{} ==> #{}", current_chain_index, requeued_height, requeued_height - 1);
+        trace!("SET START - Chain #{} Block #{} ==> #{}", current_chain_index, requeued_height, requeued_height - 1);
         let mut block_start_printed_map = crate::BLOCK_START_PRINTED.lock().unwrap();
         block_start_printed_map.insert(current_chain_index, requeued_height - 1);
     } else {
@@ -582,7 +690,7 @@ pub fn get_best_deadline(block_height: u32, account_id: u64) -> u64 {
             for best_deadline_tuple_ref in best_deadlines {
                 let (id, deadline) = best_deadline_tuple_ref;
                 if id == account_id {
-                    debug!("BestDL(Height={}, ID={}) = BestDL={}", block_height, account_id, deadline);
+                    trace!("GetBestDL(Height={}, ID={}) = {}", block_height, account_id, deadline);
                     return deadline;
                 }
             }

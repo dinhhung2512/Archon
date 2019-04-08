@@ -104,7 +104,7 @@ If you need more control over your chains, you can add any of these parameters t
   - Optional. Default = false
   - Set to true if the chain is mining via a pool.
 - `url`
-  - Required; **but may be left blank if the chain is for `HDPool`. Eg: `url: ""`**
+  - Required; **but may be left out if the chain is for `HDPool`.**
   - Must be a fully qualified URI including protocol, domain/IP and port, eg: `"http://voiplanparty.com:8124"`
   - If you wish to mine via HDPool **and use HDProxy**, you may specify your HDProxy URL here (eg `url: "http://localhost:60100"`) and Archon will use that instead of communicating directly with the pool.
 - `historicalRounds`
@@ -204,9 +204,20 @@ Use these configuration options to control Archon's behavior.
 - `loggingLevel`
   - Optional. Default = `info` *(this is case insensitive)*
   - Sets how verbose Archon's file logging is.
-    - I recommend leaving this on **info**, as debug and trace levels are *very* verbose and file sizes can get large, quickly, as it doesn't just log what I have specified in Archon, it logs everything that Archon's dependencies log as well.
+    - I recommend leaving this on **info**, as debug and trace levels are *very* verbose and file sizes can get large, quickly..
   - Valid options:
     - `Off` - Disable file logging entirely. *Note: Archon will not create a logs directory with this set.*
+    - `Trace` - Show **ALL** logs __(not recommended unless you're troubleshooting)__
+    - `Debug` - Show all logs except Trace logs __(not recommended unless you're troubleshooting)__
+    - `Info` - Recommended. Shows logs with **INFO|WARN|ERROR** levels.
+    - `Warn` - Only show **WARN|ERROR** level logs.
+    - `Error` - Only show **ERROR** level logs.
+- `dependencyLoggingLevel`
+  - Optional. Default = `info` *(this is case insensitive)*
+  - Sets how verbose Archon's *dependencies* file logging is.
+    - I recommend leaving this on **info**, as debug and trace levels are *very* verbose and file sizes can get large, quickly.
+  - Valid options:
+    - `Off` - Disable dependency logging entirely.
     - `Trace` - Show **ALL** logs __(not recommended unless you're troubleshooting)__
     - `Debug` - Show all logs except Trace logs __(not recommended unless you're troubleshooting)__
     - `Info` - Recommended. Shows logs with **INFO|WARN|ERROR** levels.

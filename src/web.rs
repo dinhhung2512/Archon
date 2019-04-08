@@ -184,12 +184,12 @@ fn get_miner_software_alt(req: &HttpRequest) -> &str {
 }
 
 fn handle_get_mining_info(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
-    debug!("GetMiningInfo Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
+    trace!("GetMiningInfo Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     create_response(StatusCode::OK, super::get_current_mining_info_json())
 }
 
 fn handle_submit_nonce(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
-    debug!("SubmitNonce Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
+    trace!("SubmitNonce Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     match *req.method() {
         Method::POST => {
             match try_get_submit_nonce_data(req) {
@@ -248,7 +248,7 @@ fn handle_invalid_request_type() -> FutureResult<HttpResponse, Error> {
 }
 
 fn handle_api_get_best_deadlines(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
-    debug!("GetBestDeadlines Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
+    trace!("GetBestDeadlines Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     match try_get_query_string_value(&req, "height") {
         (true, height_str) => 
             match str::parse::<u32>(height_str.as_str()) {
@@ -273,7 +273,7 @@ fn handle_api_get_best_deadlines(req: &HttpRequest) -> FutureResult<HttpResponse
 }
 
 fn handle_api_get_config(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
-    debug!("GetConfig Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
+    trace!("GetConfig Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     // don't allow access to other machines for this request - used for modifying the config from the WebUI only
     let mut remote_address = req.connection_info().remote().unwrap_or("").to_string();
     if remote_address.len() >= 9 {
@@ -299,6 +299,7 @@ fn handle_api_get_config(req: &HttpRequest) -> FutureResult<HttpResponse, Error>
                 num_old_log_files_to_keep: crate::CONF.num_old_log_files_to_keep,
                 logging_level: crate::CONF.logging_level.clone(),
                 show_miner_addresses: crate::CONF.show_miner_addresses,
+                dependency_logging_level: crate::CONF.dependency_logging_level.clone(),
             };
             let mut chains: Vec<PocChain> = Vec::new();
             for inner in &crate::CONF.poc_chains {
@@ -333,7 +334,7 @@ fn api_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
 }
 
 fn webui_handler(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
-    debug!("WEB UI Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
+    trace!("WEB UI Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     // just serve a static landing page for now
     result(Ok(HttpResponse::build(StatusCode::NOT_FOUND)
         .header(header::USER_AGENT, get_user_agent_str())

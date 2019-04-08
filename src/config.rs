@@ -30,6 +30,7 @@ pub struct PocChain {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_key: Option<String>,
 
+    #[serde(default)]
     pub url: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -143,6 +144,9 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logging_level: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dependency_logging_level: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_miner_addresses: Option<bool>,
