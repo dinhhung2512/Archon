@@ -12,7 +12,7 @@ use std::thread;
 
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
-use crate::web::{SubmitNonceResponse, SubmitNonceErrorResponse};
+use crate::web::{SubmitNonceResponse, SubmitNonceErrorResponse, SubmitNonceInfo};
 
 #[derive(Debug, Clone)]
 struct MiningInfoPollingResult {
@@ -86,21 +86,43 @@ pub fn thread_arbitrate() {
     }
 }
 
+fn thread_handle_hdpool_nonce_submissions(
+    chain: PocChain,
+    receiver: std_mpsc::Receiver<SubmitNonceInfo>,
+    tx: mpsc::UnboundedSender<Message>,
+) {
+    let miner_mark = "20190327";
+    let account_key = chain.account_key.clone().unwrap_or(String::from(""));
+    loop {
+        match receiver.try_recv() {
+            Ok(submit_nonce_info) => {
+                let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
+                let unix_timestamp = Local::now().timestamp();
+                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{} v{}","submit":[{{{},{},{},{},{}}}],}}}}"#, account_key, capacity_gb, miner_mark, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.block_height.unwrap_or_default(), submit_nonce_info.nonce, submit_nonce_info.deadline, unix_timestamp);
+                tx.unbounded_send(Message::Text(message.clone().into())).unwrap();
+                debug!("HDPool Websocket: SubmitNonce message: {}", message);
+            },
+            Err(_) => {}
+        };
+    }
+}
+
 fn thread_hdpool_websocket(
-    chain_index: u8,
     chain: PocChain,
     mining_info_sender: std_mpsc::Sender<String>,
+    nonce_submission_receiver: std_mpsc::Receiver<SubmitNonceInfo>,
 ) {
     let (tx, rx) = mpsc::unbounded();
     let rx = rx.map_err(|_| panic!());
     let txc = tx.clone();
+    let txs = tx.clone();
 
     // set vars
     let addr = Url::parse("wss://hdminer.hdpool.com").unwrap();
     let miner_mark = "20190327";
     let account_key = chain.account_key.clone().unwrap_or(String::from(""));
 
-    //Spawn thread for the heartbeat loop to run in.
+    // Spawn thread for the heartbeat loop to run in.
     thread::spawn(move || {
         loop {
             let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
@@ -113,6 +135,12 @@ fn thread_hdpool_websocket(
             txc.unbounded_send(Message::Text(data.into())).unwrap();
             thread::sleep(std::time::Duration::from_secs(5));
         }
+    });
+
+    // spawn thread to handle nonce submissions
+    let chain_copy = chain.clone();
+    thread::spawn(move || {
+        thread_handle_hdpool_nonce_submissions(chain_copy, nonce_submission_receiver, txs);
     });
 
     let client = connect_async(addr).and_then(move |(ws_stream, _)| {
@@ -158,11 +186,11 @@ fn thread_hdpool_websocket(
     }).map_err(|e| {
         use std::io;
 
-        println!("Error during the websocket handshake occured: {}", e);
+        error!("Error during the websocket handshake occured: {}", e);
         io::Error::new(io::ErrorKind::Other, e);
     });
 
-    tokio::runtime::run(client.map_err(|e| println!("{:?}", e)));
+    tokio::runtime::run(client.map_err(|e| error!("{:?}", e)));
 }
 
 fn thread_get_mining_info(
@@ -176,17 +204,20 @@ fn thread_get_mining_info(
     let mut request_failure = false;
     let mut last_request_success: DateTime<Local> = Local::now();
     let mut last_outage_reminder_sent: DateTime<Local> = Local::now();
-    let chain_index = super::get_chain_index(&*chain.url, &*chain.name);
 
     // setup mpsc channel to receive signal when new mining info is received from HDPool websocket
     let (hdpool_mining_info_sender, hdpool_mining_info_receiver) = std_mpsc::channel();
+    // setup mpsc channel to receive signal when nonce submissions are received from connected miners
+    let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = std_mpsc::channel();
     
     /* BEGIN ASYNC WEBSOCK STUFF. */
     if chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some() {
         // Spawn thread for the tokio reactor to run in.
         let chain_copy = chain.clone();
         thread::spawn(move || {
-            thread_hdpool_websocket(chain_index, chain_copy, hdpool_mining_info_sender.clone());
+            // set global submit nonce sender so it can be accessed from nonce submission handler code
+            *crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap() = Some(hdpool_nonce_submission_sender.clone());
+            thread_hdpool_websocket(chain_copy, hdpool_mining_info_sender.clone(), hdpool_nonce_submission_receiver);
         });
     }
     /* END ASYNC WEBSOCK STUFF. */
@@ -938,41 +969,66 @@ pub fn process_nonce_submission(
                     }
                 }
                 if send_deadline {
-                    let mut url = String::from(&*current_chain.url);
-                    // check if NOT solo mining burst
-                    if current_chain.is_hdpool.unwrap_or_default()
-                        || current_chain.is_hpool.unwrap_or_default()
-                        || current_chain.is_bhd.unwrap_or_default()
-                        || current_chain.is_pool.unwrap_or_default() {
-                        url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
-                        height, account_id, nonce, unadjusted_deadline).as_str());
-                    } else { // solo mining burst
-                        url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
-                        height, account_id, nonce, passphrase_str).as_str());
-                    }
-                    //let client = reqwest::Client::new();
-                    let mut attempts = 0;
-                    while attempts < 5 && !deadline_accepted && !deadline_rejected {
-                        _deadline_sent = true;
-                        info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
-                        match forward_nonce_submission(chain_index, url.as_str(), user_agent_header)
-                        {
-                            Some(text) => {
-                                debug!("DL Submit Response: {}", text);
-                                if text.contains("success")
-                                    && text.contains(format!("{}", adjusted_deadline).as_str())
-                                {
+                    if current_chain.is_hdpool.unwrap_or_default() && current_chain.account_key.is_some() {
+                        // get sender
+                        let sender = crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap();
+                        if sender.is_some() {
+                            let sender = sender.clone().unwrap();
+                            let mut attempts = 0;
+                            while attempts < 5 && !deadline_accepted && !deadline_rejected {
+                                info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
+                                if sender.send(SubmitNonceInfo { 
+                                    account_id: account_id,
+                                    block_height: Some(height),
+                                    nonce: nonce,
+                                    deadline: unadjusted_deadline,
+                                    secret_phrase: None,
+                                }).is_ok() {
                                     deadline_accepted = true;
-                                } else {
-                                    deadline_rejected = true;
-                                    failure_message.push_str(text.as_str());
                                 }
-                                break;
+                                attempts += 1;
                             }
-                            _ => {}
-                        };
-                        attempts += 1;
-                        thread::sleep(std::time::Duration::from_secs(1));
+                            if !deadline_accepted {
+                                deadline_rejected = true;
+                            }
+                        }
+                    } else {
+                        let mut url = String::from(&*current_chain.url);
+                        // check if NOT solo mining burst
+                        if current_chain.is_hdpool.unwrap_or_default()
+                            || current_chain.is_hpool.unwrap_or_default()
+                            || current_chain.is_bhd.unwrap_or_default()
+                            || current_chain.is_pool.unwrap_or_default() {
+                            url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
+                            height, account_id, nonce, unadjusted_deadline).as_str());
+                        } else { // solo mining burst
+                            url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
+                            height, account_id, nonce, passphrase_str).as_str());
+                        }
+                        //let client = reqwest::Client::new();
+                        let mut attempts = 0;
+                        while attempts < 5 && !deadline_accepted && !deadline_rejected {
+                            _deadline_sent = true;
+                            info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
+                            match forward_nonce_submission(chain_index, url.as_str(), user_agent_header)
+                            {
+                                Some(text) => {
+                                    debug!("DL Submit Response: {}", text);
+                                    if text.contains("success")
+                                        && text.contains(format!("{}", adjusted_deadline).as_str())
+                                    {
+                                        deadline_accepted = true;
+                                    } else {
+                                        deadline_rejected = true;
+                                        failure_message.push_str(text.as_str());
+                                    }
+                                    break;
+                                }
+                                _ => {}
+                            };
+                            attempts += 1;
+                            thread::sleep(std::time::Duration::from_secs(1));
+                        }
                     }
                 }
                 if deadline_accepted {

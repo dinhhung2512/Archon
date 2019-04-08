@@ -92,13 +92,13 @@ fn try_get_query_string_value(req: &HttpRequest, name: &str) -> (bool, String) {
     }
 }
 
-struct SubmitNonceInfo {
-    block_height: Option<u32>,
-    account_id: u64,
-    nonce: u64,
-    deadline: u64,
+pub struct SubmitNonceInfo {
+    pub block_height: Option<u32>,
+    pub account_id: u64,
+    pub nonce: u64,
+    pub deadline: u64,
     #[allow(dead_code)]
-    secret_phrase: Option<String>,
+    pub secret_phrase: Option<String>,
 }
 
 impl SubmitNonceInfo {
