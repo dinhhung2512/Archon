@@ -47,7 +47,7 @@ lazy_static! {
         let block_start_printed_map = HashMap::new();
         Arc::new(Mutex::new(block_start_printed_map))
     };
-    static ref HDPOOL_SUBMIT_NONCE_SENDER: Arc<Mutex<Option<std::sync::mpsc::Sender<SubmitNonceInfo>>>> = Arc::new(Mutex::new(None));
+    static ref HDPOOL_SUBMIT_NONCE_SENDER: Arc<Mutex<Option<crossbeam::channel::Sender<SubmitNonceInfo>>>> = Arc::new(Mutex::new(None));
     // Key = block height, Value = tuple (account_id, best_deadline)
     static ref BEST_DEADLINES: Arc<Mutex<HashMap<u32, Vec<(u64, u64)>>>> = {
         let best_deadlines = HashMap::new();

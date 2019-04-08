@@ -88,7 +88,7 @@ pub fn thread_arbitrate() {
 
 fn thread_handle_hdpool_nonce_submissions(
     chain: PocChain,
-    receiver: std_mpsc::Receiver<SubmitNonceInfo>,
+    receiver: crossbeam::channel::Receiver<SubmitNonceInfo>,
     tx: mpsc::UnboundedSender<Message>,
 ) {
     let miner_mark = "20190327";
@@ -99,8 +99,15 @@ fn thread_handle_hdpool_nonce_submissions(
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
                 let unix_timestamp = Local::now().timestamp();
                 let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{} v{}","submit":[{},{},{},{},{}]}}}}"#, account_key, capacity_gb, miner_mark, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.block_height.unwrap_or_default(), submit_nonce_info.nonce, submit_nonce_info.deadline, unix_timestamp);
-                if tx.unbounded_send(Message::Text(message.clone().into())).is_ok() {}
+                //if tx.unbounded_send(Message::Text(message.clone().into())).is_ok() {}
                 debug!("HDPool Websocket: SubmitNonce message: {}", message);
+                match tx.unbounded_send(Message::Text(message.clone().into())) {
+                    Ok(_) => {},
+                    Err(why) => {
+                        warn!("HDPool Websocket SubmitNonce failure: {:?}.", why);
+                        break;
+                    },
+                }
             },
             Err(_) => {}
         };
@@ -110,94 +117,107 @@ fn thread_handle_hdpool_nonce_submissions(
 fn thread_hdpool_websocket(
     chain: PocChain,
     mining_info_sender: std_mpsc::Sender<String>,
-    nonce_submission_receiver: std_mpsc::Receiver<SubmitNonceInfo>,
+    nonce_submission_receiver: crossbeam::channel::Receiver<SubmitNonceInfo>,
 ) {
-    let (tx, rx) = mpsc::unbounded();
-    let rx = rx.map_err(|_| panic!());
-    let txc = tx.clone();
-    let txs = tx.clone();
+    loop {
+        let (tx, rx) = mpsc::unbounded();
+        let rx = rx.map_err(|_| panic!());
+        let txc = tx.clone();
+        let txs = tx.clone();
 
-    // set vars
-    let addr = Url::parse("wss://hdminer.hdpool.com").unwrap();
-    let miner_mark = "20190327";
-    let account_key = chain.account_key.clone().unwrap_or(String::from(""));
+        // set vars
+        let addr = Url::parse("wss://hdminer.hdpool.com").unwrap();
+        let miner_mark = "20190327";
+        let account_key = chain.account_key.clone().unwrap_or(String::from(""));
 
-    // Spawn thread for the heartbeat loop to run in.
-    thread::spawn(move || {
-        loop {
-            let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
-            let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{} v{}","miner_mark":"{}","capacity":{}}}}}"#,
-                account_key,
-                crate::uppercase_first(crate::APP_NAME),
-                crate::VERSION,
-                miner_mark,
-                capacity_gb);
-            match txc.unbounded_send(Message::Text(data.into())) {
-                Ok(_) => {},
-                Err(why) => warn!("HDPool Websocket Heartbeat failure: {:?}.", why),
-            };
-            thread::sleep(std::time::Duration::from_secs(5));
-        }
-    });
-
-    // spawn thread to handle nonce submissions
-    let chain_copy = chain.clone();
-    thread::spawn(move || {
-        thread_handle_hdpool_nonce_submissions(chain_copy, nonce_submission_receiver, txs);
-    });
-
-    let client = connect_async(addr).and_then(move |(ws_stream, _)| {
-        use futures::Sink;
-        let (mut sink, stream) = ws_stream.split();
-
-        sink.start_send(Message::Text(r#"{"cmd":"mining_info"}"#.into())).unwrap();
-        sink.start_send(Message::Text(r#"{"cmd":"poolmgr.mining_info"}"#.into())).unwrap();
-
-        let ws_writer = rx.fold(sink, |mut sink, msg: Message| {
-            sink.start_send(msg).unwrap();
-            Ok(sink)
-        });
-
-        let ws_reader = stream.for_each(move |message: Message| {
-            match message.to_text() {
-                Ok(message_str) => { 
-                    match message_str.to_lowercase().as_str() {
-                        r#"{"cmd":"poolmgr.heartbeat"}"# => {
-                            trace!("Heartbeat acknowledged.");
-                        },
-                        _ => {
-                            if message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info""#) || message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info"#) {
-                                let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
-                                let mining_info = parsed_message_str["para"].to_string().clone();
-                                trace!("HDPool WebSocket: NEW BHD BLOCK: {}", mining_info);
-                                match mining_info_sender.send(mining_info) {
-                                    Ok(_) => {}
-                                    Err(_) => {}
-                                }
-                            } else {
-                                debug!("HDPool WebSocket: Received unknown message: {}", message);
-                            }
-                        },
-                    }
-                },
-                Err(_) => {}
+        // Spawn thread for the heartbeat loop to run in.
+        let hb_child_thread = thread::spawn(move || {
+            loop {
+                let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
+                let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{} v{}","miner_mark":"{}","capacity":{}}}}}"#,
+                    account_key,
+                    crate::uppercase_first(crate::APP_NAME),
+                    crate::VERSION,
+                    miner_mark,
+                    capacity_gb);
+                match txc.unbounded_send(Message::Text(data.into())) {
+                    Ok(_) => {},
+                    Err(why) => {
+                        warn!("HDPool Websocket Heartbeat failure: {:?}.", why);
+                        break;
+                    },
+                };
+                thread::sleep(std::time::Duration::from_secs(5));
             }
-
-            Ok(())
         });
 
-        ws_writer.map(|_| ()).map_err(|_| ())
-            .select(ws_reader.map(|_| ()).map_err(|_| ()))
-            .then(|_| Ok(()))
+        // spawn thread to handle nonce submissions
+        let chain_copy = chain.clone();
+        let nonce_submission_receiver_clone = nonce_submission_receiver.clone();
+        let nonce_child_thread = thread::spawn(move || {
+            thread_handle_hdpool_nonce_submissions(chain_copy, nonce_submission_receiver_clone, txs);
+        });
 
-    }).map_err(|e| {
-        use std::io;
+        let mining_info_sender = mining_info_sender.clone();
+        let client = connect_async(addr).and_then(move |(ws_stream, _)| {
+            use futures::Sink;
+            let (mut sink, stream) = ws_stream.split();
 
-        error!("Error during the websocket handshake occured: {}", e);
-        io::Error::new(io::ErrorKind::Other, e);
-    });
+            sink.start_send(Message::Text(r#"{"cmd":"mining_info"}"#.into())).unwrap();
+            sink.start_send(Message::Text(r#"{"cmd":"poolmgr.mining_info"}"#.into())).unwrap();
 
-    tokio::runtime::run(client.map_err(|e| error!("{:?}", e)));
+            let ws_writer = rx.fold(sink, |mut sink, msg: Message| {
+                sink.start_send(msg).unwrap();
+                Ok(sink)
+            });
+
+            let ws_reader = stream.for_each(move |message: Message| {
+                match message.to_text() {
+                    Ok(message_str) => { 
+                        match message_str.to_lowercase().as_str() {
+                            r#"{"cmd":"poolmgr.heartbeat"}"# => {
+                                trace!("Heartbeat acknowledged.");
+                            },
+                            _ => {
+                                if message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info""#) || message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info"#) {
+                                    let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
+                                    let mining_info = parsed_message_str["para"].to_string().clone();
+                                    trace!("HDPool WebSocket: NEW BHD BLOCK: {}", mining_info);
+                                    match mining_info_sender.send(mining_info) {
+                                        Ok(_) => {}
+                                        Err(_) => {}
+                                    }
+                                } else {
+                                    debug!("HDPool WebSocket: Received unknown message: {}", message);
+                                }
+                            },
+                        }
+                    },
+                    Err(_) => {}
+                }
+
+                Ok(())
+            });
+
+            ws_writer.map(|_| ()).map_err(|_| ())
+                .select(ws_reader.map(|_| ()).map_err(|_| ()))
+                .then(|_| Ok(()))
+
+        }).map_err(|e| {
+            use std::io;
+
+            error!("Error during the websocket handshake occured: {}", e);
+            io::Error::new(io::ErrorKind::Other, e);
+        });
+
+        tokio::runtime::run(client.map_err(|e| error!("{:?}", e)));
+
+        let _ = nonce_child_thread.join();
+        let _ = hb_child_thread.join();
+
+        warn!("HDPool Websocket: Attempting to reconnect in 10 seconds.");
+        thread::sleep(std::time::Duration::from_secs(10));
+    }
 }
 
 fn thread_get_mining_info(
@@ -215,7 +235,10 @@ fn thread_get_mining_info(
     // setup mpsc channel to receive signal when new mining info is received from HDPool websocket
     let (hdpool_mining_info_sender, hdpool_mining_info_receiver) = std_mpsc::channel();
     // setup mpsc channel to receive signal when nonce submissions are received from connected miners
-    let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = std_mpsc::channel();
+    //let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = std_mpsc::channel();
+
+    // Mpmc channels for now, for the ease of recreating the receiver if a thread dies. Will find a better solution later.
+    let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = crossbeam::channel::unbounded();
     
     /* BEGIN ASYNC WEBSOCK STUFF. */
     if chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some() {
