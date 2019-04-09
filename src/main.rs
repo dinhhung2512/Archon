@@ -29,7 +29,7 @@ pub mod error;
 use crate::config::Config;
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
-use web::SubmitNonceInfo;
+use arbiter::HDPoolSubmitNonceInfo;
 
 const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -47,7 +47,7 @@ lazy_static! {
         let block_start_printed_map = HashMap::new();
         Arc::new(Mutex::new(block_start_printed_map))
     };
-    static ref HDPOOL_SUBMIT_NONCE_SENDER: Arc<Mutex<Option<crossbeam::channel::Sender<SubmitNonceInfo>>>> = Arc::new(Mutex::new(None));
+    static ref HDPOOL_SUBMIT_NONCE_SENDER: Arc<Mutex<Option<crossbeam::channel::Sender<HDPoolSubmitNonceInfo>>>> = Arc::new(Mutex::new(None));
     // Key = block height, Value = tuple (account_id, best_deadline)
     static ref BEST_DEADLINES: Arc<Mutex<HashMap<u32, Vec<(u64, u64)>>>> = {
         let best_deadlines = HashMap::new();

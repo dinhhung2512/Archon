@@ -12,12 +12,22 @@ use std::thread;
 
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
-use crate::web::{SubmitNonceResponse, SubmitNonceErrorResponse, SubmitNonceInfo};
+use crate::web::{SubmitNonceResponse, SubmitNonceErrorResponse};
 
 #[derive(Debug, Clone)]
 struct MiningInfoPollingResult {
     mining_info: MiningInfo,
     chain: PocChain,
+}
+
+#[derive(Debug, Clone)]
+pub struct HDPoolSubmitNonceInfo {
+    pub account_id: u64,
+    pub height: u32,
+    pub nonce: u64,
+    pub deadline_adjusted: u64,
+    pub deadline_unadjusted: u64,
+    pub notify_response_sender: crossbeam::channel::Sender<String>
 }
 
 fn create_chain_nonce_submission_client(chain_index: u8) {
@@ -88,7 +98,7 @@ pub fn thread_arbitrate() {
 
 fn thread_handle_hdpool_nonce_submissions(
     chain: PocChain,
-    receiver: crossbeam::channel::Receiver<SubmitNonceInfo>,
+    receiver: crossbeam::channel::Receiver<HDPoolSubmitNonceInfo>,
     tx: mpsc::UnboundedSender<Message>,
 ) {
     let miner_mark = "20190327";
@@ -98,13 +108,27 @@ fn thread_handle_hdpool_nonce_submissions(
             Ok(submit_nonce_info) => {
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
                 let unix_timestamp = Local::now().timestamp();
-                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{} v{}","submit":[{},{},{},{},{}]}}}}"#, account_key, capacity_gb, miner_mark, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.block_height.unwrap_or_default(), submit_nonce_info.nonce, submit_nonce_info.deadline, unix_timestamp);
+                let hostname = match gethostname::gethostname().to_str() {
+                    Some(hostname) => format!("{} via ", hostname),
+                    None => String::from("")
+                };
+                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{}{} v{}","submit":[{{"accountId":{},"height":{},"nonce":{},"deadline":{},"ts":{}}}]}}}}"#, account_key, capacity_gb, miner_mark, hostname, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.height, submit_nonce_info.nonce, submit_nonce_info.deadline_unadjusted, unix_timestamp);
                 //if tx.unbounded_send(Message::Text(message.clone().into())).is_ok() {}
                 debug!("HDPool Websocket: SubmitNonce message: {}", message);
                 match tx.unbounded_send(Message::Text(message.clone().into())) {
-                    Ok(_) => {},
+                    Ok(_) => {
+                        println!("HDP-WS: Sent DL Successfully: {}", message.clone());
+                        match submit_nonce_info.notify_response_sender.send(format!(r#"{{"result":"success","deadline":"{}"}}"#, submit_nonce_info.deadline_adjusted)) {
+                            Ok(_) => println!("HDP-WS: Sent response signal successfully."),
+                            Err(_) => println!("HDP-WS: Failed to send response signal.")
+                        };
+                    },
                     Err(why) => {
-                        warn!("HDPool Websocket SubmitNonce failure: {:?}.", why);
+                        println!("HDPool Websocket SubmitNonce failure: {:?}.", why);
+                        match submit_nonce_info.notify_response_sender.send(format!(r#"{{"result":"failure","reason":"{}"}}"#, why)) {
+                            Ok(_) => println!("HDP-WS: Sent response signal successfully."),
+                            Err(_) => println!("HDP-WS: Failed to send response signal.")
+                        };
                         break;
                     },
                 }
@@ -116,8 +140,8 @@ fn thread_handle_hdpool_nonce_submissions(
 
 fn thread_hdpool_websocket(
     chain: PocChain,
-    mining_info_sender: std_mpsc::Sender<String>,
-    nonce_submission_receiver: crossbeam::channel::Receiver<SubmitNonceInfo>,
+    mining_info_sender: crossbeam::channel::Sender<String>,
+    nonce_submission_receiver: crossbeam::channel::Receiver<HDPoolSubmitNonceInfo>,
 ) {
     loop {
         let (tx, rx) = mpsc::unbounded();
@@ -134,14 +158,21 @@ fn thread_hdpool_websocket(
         let hb_child_thread = thread::spawn(move || {
             loop {
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
-                let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{} v{}","miner_mark":"{}","capacity":{}}}}}"#,
+                let hostname = match gethostname::gethostname().to_str() {
+                    Some(hostname) => format!("{} via ", hostname),
+                    None => String::from("")
+                };
+                let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{}{} v{}","miner_mark":"{}","capacity":{}}}}}"#,
                     account_key,
+                    hostname,
                     crate::uppercase_first(crate::APP_NAME),
                     crate::VERSION,
                     miner_mark,
                     capacity_gb);
-                match txc.unbounded_send(Message::Text(data.into())) {
-                    Ok(_) => {},
+                match txc.unbounded_send(Message::Text(data.clone().into())) {
+                    Ok(_) => {
+                        println!("Heartbeat Sent:\n    {}", data);
+                    },
                     Err(why) => {
                         warn!("HDPool Websocket Heartbeat failure: {:?}.", why);
                         break;
@@ -176,9 +207,10 @@ fn thread_hdpool_websocket(
                     Ok(message_str) => { 
                         match message_str.to_lowercase().as_str() {
                             r#"{"cmd":"poolmgr.heartbeat"}"# => {
-                                trace!("Heartbeat acknowledged.");
+                                println!("Heartbeat acknowledged.");
                             },
                             _ => {
+                                println!("HDPool WebSocket: Received:\n    {}", message);
                                 if message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info""#) || message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info"#) {
                                     let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
                                     let mining_info = parsed_message_str["para"].to_string().clone();
@@ -199,8 +231,8 @@ fn thread_hdpool_websocket(
                 Ok(())
             });
 
-            ws_writer.map(|_| ()).map_err(|e| { debug!("HDPool WebSocket Failure: {:?}", e); () })
-                .select(ws_reader.map(|_| ()).map_err(|e| { debug!("HDPool WebSocket Failure: {:?}", e); () }))
+            ws_writer.map(|_| ()).map_err(|e| { println!("HDPool WebSocket Failure: {:?}", e); () })
+                .select(ws_reader.map(|_| ()).map_err(|e| { println!("HDPool WebSocket Failure: {:?}", e); () }))
                 .then(|_| Ok(()))
 
         }).map_err(|e| {
@@ -215,7 +247,7 @@ fn thread_hdpool_websocket(
         let _ = nonce_child_thread.join();
         let _ = hb_child_thread.join();
 
-        warn!("HDPool Websocket: Attempting to reconnect in 10 seconds.");
+        println!("HDPool Websocket: Attempting to reconnect in 10 seconds.");
         thread::sleep(std::time::Duration::from_secs(10));
     }
 }
@@ -231,17 +263,20 @@ fn thread_get_mining_info(
     let mut request_failure = false;
     let mut last_request_success: DateTime<Local> = Local::now();
     let mut last_outage_reminder_sent: DateTime<Local> = Local::now();
-
+    
     // setup mpsc channel to receive signal when new mining info is received from HDPool websocket
-    let (hdpool_mining_info_sender, hdpool_mining_info_receiver) = std_mpsc::channel();
-    // setup mpsc channel to receive signal when nonce submissions are received from connected miners
-    //let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = std_mpsc::channel();
-
+    //let (hdpool_mining_info_sender, hdpool_mining_info_receiver) = std_mpsc::channel();
     // Mpmc channels for now, for the ease of recreating the receiver if a thread dies. Will find a better solution later.
-    let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = crossbeam::channel::unbounded();
+    let (hdpool_mining_info_sender, hdpool_mining_info_receiver) = crossbeam::channel::unbounded();
     
     /* BEGIN ASYNC WEBSOCK STUFF. */
     if chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some() {
+        // setup mpsc channel to receive signal when nonce submissions are received from connected miners
+        //let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = std_mpsc::channel();
+        // Mpmc channels for now, for the ease of recreating the receiver if a thread dies. Will find a better solution later.
+
+        let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = crossbeam::channel::unbounded();
+
         // Spawn thread for the tokio reactor to run in.
         let chain_copy = chain.clone();
         thread::spawn(move || {
@@ -1007,16 +1042,39 @@ pub fn process_nonce_submission(
                             let mut attempts = 0;
                             while attempts < 5 && !deadline_accepted && !deadline_rejected {
                                 info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
-                                if sender.send(SubmitNonceInfo { 
+                                println!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", account_id, height, nonce, adjusted_deadline, unadjusted_deadline, attempts + 1);
+                                let (hdp_submit_response_sender, hdp_submit_response_receiver) = crossbeam::channel::unbounded();
+                                match sender.send(HDPoolSubmitNonceInfo { 
                                     account_id: account_id,
-                                    block_height: Some(height),
+                                    height: height,
                                     nonce: nonce,
-                                    deadline: unadjusted_deadline,
-                                    secret_phrase: None,
-                                }).is_ok() {
-                                    deadline_accepted = true;
-                                }
-                                attempts += 1;
+                                    deadline_unadjusted: unadjusted_deadline,
+                                    deadline_adjusted: adjusted_deadline,
+                                    notify_response_sender: hdp_submit_response_sender.clone(),
+                                }) {
+                                    Ok(()) => {
+                                        println!("HDP-WS - Sent DL to MPMC Successfully:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5\n        Awaiting confirm/rejection response...", account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
+                                        let mut recv_attempts = 0;
+                                        while recv_attempts < 5 && !deadline_accepted && !deadline_rejected {
+                                            match hdp_submit_response_receiver.recv() {
+                                                Ok(response) => {
+                                                    println!("HDP-WS - Receiver responded with:\n    {}", response);
+                                                    deadline_accepted = true;
+                                                },
+                                                Err(why) => {
+                                                    println!("HDP-WS - Receiver failed to receive submission response signal: {}", why);
+                                                    recv_attempts += 1;
+                                                    // wait 250ms before trying again
+                                                    std::thread::sleep(std::time::Duration::from_millis(250));
+                                                }
+                                            }
+                                        }
+                                    },
+                                    Err(why) => {
+                                        println!("HDP-WS - Failed to signal receiver: {:?}\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", why, account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
+                                        attempts += 1;
+                                    }
+                                };
                             }
                             if !deadline_accepted {
                                 deadline_rejected = true;
