@@ -1125,7 +1125,7 @@ fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confi
         let color = get_color(&*current_chain.color);
         let is_hdpool = current_chain.is_hdpool.unwrap_or_default() && current_chain.account_key.is_some();
         let confirm_text = match is_hdpool {
-            true => "Sent:     ",
+            true =>  "Submitted:",
             false => "Confirmed:",
         };
         println!("            {}                     {}{}",
