@@ -854,6 +854,7 @@ fn print_block_started(
             actual_target_deadline = current_chain.target_deadline.unwrap()
         }
         let mut human_readable_target_deadline = String::from("");
+        let is_bhd = current_chain.is_bhd.unwrap_or_default() || current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hpool.unwrap_or_default();
         match get_dynamic_deadline_for_block(base_target) {
             (true, _, net_difficulty, dynamic_target_deadline) => {
                 let mut dynamic_target_deadline_warning = String::from("");
@@ -893,7 +894,7 @@ fn print_block_started(
                     )
                     .as_str(),
                 );
-                if !current_chain.is_bhd.unwrap_or_default() {
+                if !is_bhd {
                     new_block_message.push_str(
                         format!("  {}   {}\n",
                             "Network Difficulty:".color(color).bold(),
@@ -935,7 +936,7 @@ fn print_block_started(
                     )
                     .as_str(),
                 );
-                if !current_chain.is_bhd.unwrap_or_default() {
+                if !is_bhd {
                     new_block_message.push_str(
                         format!("  {}   {}\n",
                             "Network Difficulty:".color(color).bold(),
@@ -1108,8 +1109,13 @@ fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confi
 
     if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let color = get_color(&*current_chain.color);
+        let is_hdpool = current_chain.is_hdpool.unwrap_or_default() && current_chain.account_key.is_some();
+        let confirm_text = match is_hdpool {
+            true => "Sent:     ",
+            false => "Confirmed:",
+        };
         println!("            {}                     {}{}",
-            "Confirmed:".green(),
+            confirm_text.green(),
             deadline.to_string().color(color),
             format!(" ({}ms)", confirmation_time_ms).color(color)
         );

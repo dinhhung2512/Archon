@@ -113,21 +113,20 @@ fn thread_handle_hdpool_nonce_submissions(
                     None => String::from("")
                 };
                 let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{}{} v{}","submit":[{{"accountId":{},"height":{},"nonce":{},"deadline":{},"ts":{}}}]}}}}"#, account_key, capacity_gb, miner_mark, hostname, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.height, submit_nonce_info.nonce, submit_nonce_info.deadline_unadjusted, unix_timestamp);
-                //if tx.unbounded_send(Message::Text(message.clone().into())).is_ok() {}
                 debug!("HDPool Websocket: SubmitNonce message: {}", message);
                 match tx.unbounded_send(Message::Text(message.clone().into())) {
                     Ok(_) => {
-                        println!("HDP-WS: Sent DL Successfully: {}", message.clone());
+                        info!("HDP-WS: Sent DL Successfully: {}", message.clone());
                         match submit_nonce_info.notify_response_sender.send(format!(r#"{{"result":"success","deadline":"{}"}}"#, submit_nonce_info.deadline_adjusted)) {
-                            Ok(_) => println!("HDP-WS: Sent response signal successfully."),
-                            Err(_) => println!("HDP-WS: Failed to send response signal.")
+                            Ok(_) => debug!("HDP-WS: Sent response signal successfully."),
+                            Err(_) => warn!("HDP-WS: Failed to send response signal.")
                         };
                     },
                     Err(why) => {
-                        println!("HDPool Websocket SubmitNonce failure: {:?}.", why);
+                        info!("HDPool Websocket SubmitNonce failure: {:?}.", why);
                         match submit_nonce_info.notify_response_sender.send(format!(r#"{{"result":"failure","reason":"{}"}}"#, why)) {
-                            Ok(_) => println!("HDP-WS: Sent response signal successfully."),
-                            Err(_) => println!("HDP-WS: Failed to send response signal.")
+                            Ok(_) => debug!("HDP-WS: Sent response signal successfully."),
+                            Err(_) => warn!("HDP-WS: Failed to send response signal.")
                         };
                         break;
                     },
@@ -171,7 +170,7 @@ fn thread_hdpool_websocket(
                     capacity_gb);
                 match txc.unbounded_send(Message::Text(data.clone().into())) {
                     Ok(_) => {
-                        println!("Heartbeat Sent:\n    {}", data);
+                        trace!("Heartbeat Sent:\n    {}", data);
                     },
                     Err(why) => {
                         warn!("HDPool Websocket Heartbeat failure: {:?}.", why);
@@ -207,17 +206,21 @@ fn thread_hdpool_websocket(
                     Ok(message_str) => { 
                         match message_str.to_lowercase().as_str() {
                             r#"{"cmd":"poolmgr.heartbeat"}"# => {
-                                println!("Heartbeat acknowledged.");
+                                trace!("Heartbeat acknowledged.");
                             },
                             _ => {
-                                println!("HDPool WebSocket: Received:\n    {}", message);
+                                debug!("HDPool WebSocket: Received:\n    {}", message);
                                 if message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info""#) || message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info"#) {
                                     let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
                                     let mining_info = parsed_message_str["para"].to_string().clone();
-                                    trace!("HDPool WebSocket: NEW BHD BLOCK: {}", mining_info);
+                                    debug!("HDPool WebSocket: NEW BHD BLOCK: {}", mining_info);
                                     match mining_info_sender.send(mining_info) {
-                                        Ok(_) => {}
-                                        Err(_) => {}
+                                        Ok(_) => {
+                                            debug!("Sent mining info through channel successfully.");
+                                        }
+                                        Err(why) => {
+                                            warn!("HDP-WS: Couldn't send mining info through channel: {}", why);
+                                        }
                                     }
                                 } else {
                                     debug!("HDPool WebSocket: Received unknown message: {}", message);
@@ -231,8 +234,8 @@ fn thread_hdpool_websocket(
                 Ok(())
             });
 
-            ws_writer.map(|_| ()).map_err(|e| { println!("HDPool WebSocket Failure: {:?}", e); () })
-                .select(ws_reader.map(|_| ()).map_err(|e| { println!("HDPool WebSocket Failure: {:?}", e); () }))
+            ws_writer.map(|_| ()).map_err(|e| { warn!("HDPool WebSocket Failure: {:?}", e); () })
+                .select(ws_reader.map(|_| ()).map_err(|e| { warn!("HDPool WebSocket Failure: {:?}", e); () }))
                 .then(|_| Ok(()))
 
         }).map_err(|e| {
@@ -247,7 +250,7 @@ fn thread_hdpool_websocket(
         let _ = nonce_child_thread.join();
         let _ = hb_child_thread.join();
 
-        println!("HDPool Websocket: Attempting to reconnect in 10 seconds.");
+        info!("HDPool Websocket: Attempting to reconnect in 10 seconds.");
         thread::sleep(std::time::Duration::from_secs(10));
     }
 }
@@ -292,8 +295,8 @@ fn thread_get_mining_info(
         let mining_info_response = match is_hdpool {
             true => {
                 match hdpool_mining_info_receiver.try_recv() {
-                    Ok(mining_info) => mining_info,
-                    Err(_) => String::from(""),
+                    Ok(mining_info) => Some(mining_info),
+                    Err(_) => None,
                 }
             },
             false => {
@@ -310,83 +313,87 @@ fn thread_get_mining_info(
                     .send() {
                     Ok(mut resp) => {
                         match &resp.text() {
-                            Ok(text) => text.to_string(),
+                            Ok(text) => Some(text.to_string()),
                             Err(why) => {
                                 warn!("GetMiningInfo({}): Could not get response text: {}", &*chain.name, why);
-                                String::from("")
+                                None
                             }
                         }
                     },
                     Err(why) => {
-                        warn!("GetMiningInfo({}): Request failed: {}", &*chain.name, why);
-                        String::from("")
+                        debug!("GetMiningInfo({}): Request failed: {}", &*chain.name, why);
+                        None
                     }
                 }
             }
         };
-        if mining_info_response.len() > 0 {
-            match MiningInfo::from_json(mining_info_response.as_str()) {
-                (true, _mining_info) => {
-                    if request_failure {
-                        request_failure = false;
-                        let outage_duration = Local::now() - last_request_success;
-                        let outage_duration_str = super::format_timespan(
-                            outage_duration.num_seconds() as u64,
-                        );
-                        println!("  {} {} {}",
-                            super::get_time().white(),
-                            format!("{}", &*chain.name).color(&*chain.color),
-                            format!("Outage over, total time unavailable: {}.", outage_duration_str).green()
-                        );
-                        info!("{} - Outage over, total time unavailable: {}.", &*chain.name, outage_duration_str);
-                    }
-                    last_request_success = Local::now();
-                    if (chain.allow_lower_block_heights.unwrap_or_default()
-                        && _mining_info.height != last_block_height)
-                        || _mining_info.height > last_block_height
-                    {
-                        last_block_height = _mining_info.height;
-                        let _mining_info_polling_result = MiningInfoPollingResult {
-                            mining_info: _mining_info.clone(),
-                            chain: chain.clone(),
-                        };
-                        match sender.send(_mining_info_polling_result) {
-                            Ok(_) => {}
-                            Err(_) => {}
+        if !is_hdpool || mining_info_response.is_some() {
+            match mining_info_response {
+                Some(mining_info_response) => {
+                    match MiningInfo::from_json(mining_info_response.as_str()) {
+                        (true, _mining_info) => {
+                            if request_failure {
+                                request_failure = false;
+                                let outage_duration = Local::now() - last_request_success;
+                                let outage_duration_str = super::format_timespan(
+                                    outage_duration.num_seconds() as u64,
+                                );
+                                println!("  {} {} {}",
+                                    super::get_time().white(),
+                                    format!("{}", &*chain.name).color(&*chain.color),
+                                    format!("Outage over, total time unavailable: {}.", outage_duration_str).green()
+                                );
+                                info!("{} - Outage over, total time unavailable: {}.", &*chain.name, outage_duration_str);
+                            }
+                            last_request_success = Local::now();
+                            if (chain.allow_lower_block_heights.unwrap_or_default()
+                                && _mining_info.height != last_block_height)
+                                || _mining_info.height > last_block_height
+                            {
+                                last_block_height = _mining_info.height;
+                                let _mining_info_polling_result = MiningInfoPollingResult {
+                                    mining_info: _mining_info.clone(),
+                                    chain: chain.clone(),
+                                };
+                                match sender.send(_mining_info_polling_result) {
+                                    Ok(_) => {}
+                                    Err(_) => {}
+                                }
+                            }
+                            drop(_mining_info);
                         }
-                    }
-                    drop(_mining_info);
-                }
-                (false, _mining_info) => {
-                    if !request_failure {
-                        request_failure = true;
-                        last_outage_reminder_sent = Local::now();
-                        println!("  {} {} {}",
-                            super::get_time().white(),
-                            format!("{}", &*chain.name).color(&*chain.color),
-                            "Could not retrieve mining info!".red()
-                        );
-                        info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, mining_info_response);
-                    } else {
-                        let outage_duration = Local::now() - last_request_success;
-                        let last_reminder = Local::now() - last_outage_reminder_sent;
-                        if last_reminder.num_seconds()
-                            >= crate::CONF.outage_status_update_interval.unwrap_or(300u16) as i64
-                        {
-                            last_outage_reminder_sent = Local::now();
-                            let outage_duration_str =
-                                super::format_timespan(outage_duration.num_seconds() as u64);
-                            println!("  {} {} {}",
-                                super::get_time().white(),
-                                format!("{} - Last: {}", &*chain.name, last_block_height).color(&*chain.color),
-                                format!("Outage continues, time unavailable so far: {}.", outage_duration_str).red()
-                            );
-                            info!("{} - Last: {} - Outage continues, time unavailable so far: {}", &*chain.name, last_block_height, outage_duration_str);
+                        (false, _) => {
+                            if !request_failure {
+                                request_failure = true;
+                                last_outage_reminder_sent = Local::now();
+                                println!("  {} {} {}",
+                                    super::get_time().white(),
+                                    format!("{}", &*chain.name).color(&*chain.color),
+                                    "Could not retrieve mining info!".red()
+                                );
+                                info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, mining_info_response);
+                            } else {
+                                let outage_duration = Local::now() - last_request_success;
+                                let last_reminder = Local::now() - last_outage_reminder_sent;
+                                if last_reminder.num_seconds()
+                                    >= crate::CONF.outage_status_update_interval.unwrap_or(300u16) as i64
+                                {
+                                    last_outage_reminder_sent = Local::now();
+                                    let outage_duration_str =
+                                        super::format_timespan(outage_duration.num_seconds() as u64);
+                                    println!("  {} {} {}",
+                                        super::get_time().white(),
+                                        format!("{} - Last: {}", &*chain.name, last_block_height).color(&*chain.color),
+                                        format!("Outage continues, time unavailable so far: {}.", outage_duration_str).red()
+                                    );
+                                    info!("{} - Last: {} - Outage continues, time unavailable so far: {}", &*chain.name, last_block_height, outage_duration_str);
+                                }
+                            }
                         }
-                    }
-                    drop(_mining_info);
-                }
-            };
+                    };
+                },
+                _ => {},
+            }
         }
         let mut interval = chain.get_mining_info_interval.unwrap_or(3) as u64;
         if interval < 1 {
@@ -1042,7 +1049,7 @@ pub fn process_nonce_submission(
                             let mut attempts = 0;
                             while attempts < 5 && !deadline_accepted && !deadline_rejected {
                                 info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
-                                println!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", account_id, height, nonce, adjusted_deadline, unadjusted_deadline, attempts + 1);
+                                trace!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", account_id, height, nonce, adjusted_deadline, unadjusted_deadline, attempts + 1);
                                 let (hdp_submit_response_sender, hdp_submit_response_receiver) = crossbeam::channel::unbounded();
                                 match sender.send(HDPoolSubmitNonceInfo { 
                                     account_id: account_id,
@@ -1053,16 +1060,16 @@ pub fn process_nonce_submission(
                                     notify_response_sender: hdp_submit_response_sender.clone(),
                                 }) {
                                     Ok(()) => {
-                                        println!("HDP-WS - Sent DL to MPMC Successfully:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5\n        Awaiting confirm/rejection response...", account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
+                                        trace!("HDP-WS - Sent DL to MPMC Successfully:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5\n        Awaiting confirm/rejection response...", account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
                                         let mut recv_attempts = 0;
                                         while recv_attempts < 5 && !deadline_accepted && !deadline_rejected {
                                             match hdp_submit_response_receiver.recv() {
                                                 Ok(response) => {
-                                                    println!("HDP-WS - Receiver responded with:\n    {}", response);
+                                                    trace!("HDP-WS - Receiver responded with:\n    {}", response);
                                                     deadline_accepted = true;
                                                 },
                                                 Err(why) => {
-                                                    println!("HDP-WS - Receiver failed to receive submission response signal: {}", why);
+                                                    debug!("HDP-WS - Receiver failed to receive submission response signal: {}", why);
                                                     recv_attempts += 1;
                                                     // wait 250ms before trying again
                                                     std::thread::sleep(std::time::Duration::from_millis(250));
@@ -1071,7 +1078,7 @@ pub fn process_nonce_submission(
                                         }
                                     },
                                     Err(why) => {
-                                        println!("HDP-WS - Failed to signal receiver: {:?}\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", why, account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
+                                        debug!("HDP-WS - Failed to signal receiver: {:?}\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", why, account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
                                         attempts += 1;
                                     }
                                 };
