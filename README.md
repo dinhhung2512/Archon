@@ -124,21 +124,21 @@ If you need more control over your chains, you can add any of these parameters t
   - A 0-based priority index. 0 = highest priority. MUST BE UNIQUE PER CHAIN.
 - `isHpool`
   - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HPOOL`**
-  - Set to true to instruct Archon to send the supplied `accountKey` value to HPool on deadline submissions. *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - Set to true if this chain is for mining BHD via HPool. This will instruct Archon to send the supplied `accountKey` value to HPool on deadline submissions. *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
   - **NOTE:** You may only specify `isHpool` **OR** `isHdpool` on each chain - specifying both as true will result in a fatal error.
 - `isHdpool`
   - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HDPOOL`**
-  - Set to true to instruct Archon to talk directly to HDPool via websockets instead of the normal method. *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - Set to true if this chain is for mining via HDPool. **To instruct Archon to talk directly to HDPool via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
   - **NOTE:** You may only specify `isHpool` **OR** `isHdpool` on each chain - specifying both as true will result in a fatal error.
 - `accountKey`
-  - Optional. **REQUIRED FOR MINING BHD THROUGH `HPOOL` or `HDPOOL`**
-  - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Not used if `isHpool` or `isHdpool` are false.
+  - Optional. **REQUIRED FOR MINING BHD THROUGH `HPOOL` or `HDPOOL` _(Direct only, not required if you are using HDProxy for HDPool)_**
+  - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Not used if `isHpool` and `isHdpool` are both false.*
 - `isBhd`
   - Optional. Default = false
-  - Set to true if the chain is mining BHD/BTCHD/BitcoinHD.
+  - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. Not required if `isHpool` or `isHdpool` is set to `true`.
 - `isPool`
   - Optional. Default = false
-  - Set to true if the chain is mining via a pool.
+  - Set to true if the chain is mining via a pool. Not required if `isHpool` or `isHdpool` is set to `true`.
 - `url`
   - Required; **but may be left out if the chain is for `HDPool`.**
   - Must be a fully qualified URI including protocol, domain/IP and port, eg: `"http://voiplanparty.com:8124"`

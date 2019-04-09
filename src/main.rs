@@ -222,6 +222,7 @@ fn main() {
         let mut multiple_same_priority_chains = false;
         let mut unused_passphrase_warnings = String::from("");
         let mut account_key_warnings = String::from("");
+        let mut invalid_url_warnings = String::from("");
         for inner in &crate::CONF.poc_chains {
             for chain in inner {
                 if chain.numeric_id_to_passphrase.is_some()
@@ -267,6 +268,11 @@ fn main() {
                             warn!("Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name);
                             account_key_warnings.push_str(format!("    Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
                         }
+                    }
+                    // check if URL is present if this chain is NOT for HDPool Direct
+                    if !(chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some()) && chain.url.clone().len() == 0 {
+                        invalid_url_warnings.push_str(format!("    Chain \"{}\" has no URL set when one is required!\n", &*chain.name).as_str());
+
                     }
                     chain_counter += 1;
                     let chain_tdl = chain.target_deadline.unwrap_or_default();
@@ -337,6 +343,7 @@ fn main() {
 
         if chain_counter == 0
             || (CONF.priority_mode.unwrap_or(true) && multiple_same_priority_chains)
+            || invalid_url_warnings.len() > 0
         {
             if chain_counter == 0 {
                 println!("  {} {} {}",
@@ -345,13 +352,20 @@ fn main() {
                     "You do not have any PoC Chains enabled. Archon has nothing to do!".yellow()
                 );
                 error!("There are no PoC Chains configured.");
-            } else {
+            } else if CONF.priority_mode.unwrap_or(true) && multiple_same_priority_chains {
                 println!("  {} {} {}",
                     get_time().white(),
                     "ERROR".red().underline(),
                     "You have multiple chains configured with the same priority level! Priorities must be unique!".yellow()
                 );
                 error!("Multiple PoC Chains are configured with the same priority level. Priority levels must be unique.");
+            } else if invalid_url_warnings.len() > 0 {
+                println!("\n  {} {} - Invalid Chain URL found\n{}",
+                    get_time().white(),
+                    "ERROR".red().underline(),
+                    invalid_url_warnings.red(),
+                    );
+                error!("Invalid chain url found: {}", invalid_url_warnings);
             }
 
             println!("\n  {}",
