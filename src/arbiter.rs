@@ -295,8 +295,8 @@ fn thread_get_mining_info(
         let mining_info_response = match is_hdpool {
             true => {
                 match hdpool_mining_info_receiver.try_recv() {
-                    Ok(mining_info) => Some(mining_info),
-                    Err(_) => None,
+                    Ok(mining_info) => mining_info,
+                    Err(_) => String::from("none"),
                 }
             },
             false => {
@@ -313,86 +313,91 @@ fn thread_get_mining_info(
                     .send() {
                     Ok(mut resp) => {
                         match &resp.text() {
-                            Ok(text) => Some(text.to_string()),
+                            Ok(text) => text.to_string(),
                             Err(why) => {
                                 warn!("GetMiningInfo({}): Could not get response text: {}", &*chain.name, why);
-                                None
+                                String::from("none")
                             }
                         }
                     },
                     Err(why) => {
                         debug!("GetMiningInfo({}): Request failed: {}", &*chain.name, why);
-                        None
+                        String::from("none")
                     }
                 }
             }
         };
-        if !is_hdpool || mining_info_response.is_some() {
-            match mining_info_response {
-                Some(mining_info_response) => {
-                    match MiningInfo::from_json(mining_info_response.as_str()) {
-                        (true, _mining_info) => {
-                            if request_failure {
-                                request_failure = false;
-                                let outage_duration = Local::now() - last_request_success;
-                                let outage_duration_str = super::format_timespan(
-                                    outage_duration.num_seconds() as u64,
-                                );
-                                println!("  {} {} {}",
-                                    super::get_time().white(),
-                                    format!("{}", &*chain.name).color(&*chain.color),
-                                    format!("Outage over, total time unavailable: {}.", outage_duration_str).green()
-                                );
-                                info!("{} - Outage over, total time unavailable: {}.", &*chain.name, outage_duration_str);
-                            }
-                            last_request_success = Local::now();
-                            if (chain.allow_lower_block_heights.unwrap_or_default()
-                                && _mining_info.height != last_block_height)
-                                || _mining_info.height > last_block_height
-                            {
-                                last_block_height = _mining_info.height;
-                                let _mining_info_polling_result = MiningInfoPollingResult {
-                                    mining_info: _mining_info.clone(),
-                                    chain: chain.clone(),
-                                };
-                                match sender.send(_mining_info_polling_result) {
-                                    Ok(_) => {}
-                                    Err(_) => {}
-                                }
-                            }
-                            drop(_mining_info);
-                        }
-                        (false, _) => {
-                            if !request_failure {
-                                request_failure = true;
-                                last_outage_reminder_sent = Local::now();
-                                println!("  {} {} {}",
-                                    super::get_time().white(),
-                                    format!("{}", &*chain.name).color(&*chain.color),
-                                    "Could not retrieve mining info!".red()
-                                );
-                                info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, mining_info_response);
-                            } else {
-                                let outage_duration = Local::now() - last_request_success;
-                                let last_reminder = Local::now() - last_outage_reminder_sent;
-                                if last_reminder.num_seconds()
-                                    >= crate::CONF.outage_status_update_interval.unwrap_or(300u16) as i64
-                                {
-                                    last_outage_reminder_sent = Local::now();
-                                    let outage_duration_str =
-                                        super::format_timespan(outage_duration.num_seconds() as u64);
-                                    println!("  {} {} {}",
-                                        super::get_time().white(),
-                                        format!("{} - Last: {}", &*chain.name, last_block_height).color(&*chain.color),
-                                        format!("Outage continues, time unavailable so far: {}.", outage_duration_str).red()
-                                    );
-                                    info!("{} - Last: {} - Outage continues, time unavailable so far: {}", &*chain.name, last_block_height, outage_duration_str);
-                                }
-                            }
-                        }
-                    };
-                },
-                _ => {},
+        let parse_result;
+        let _mining_info;
+        if mining_info_response != "none" {
+            match MiningInfo::from_json(mining_info_response.as_str()) {
+                (result, mining_info) => {
+                    parse_result = result;
+                    _mining_info = mining_info;
+                }
+            };
+        } else {
+            parse_result = false;
+            _mining_info = MiningInfo::empty();
+        }
+        if parse_result {
+            if request_failure {
+                request_failure = false;
+                let outage_duration = Local::now() - last_request_success;
+                let outage_duration_str = super::format_timespan(
+                    outage_duration.num_seconds() as u64,
+                );
+                println!("  {} {} {}",
+                    super::get_time().white(),
+                    format!("{}", &*chain.name).color(&*chain.color),
+                    format!("Outage over, total time unavailable: {}.", outage_duration_str).green()
+                );
+                info!("{} - Outage over, total time unavailable: {}.", &*chain.name, outage_duration_str);
+            }
+            last_request_success = Local::now();
+            if (chain.allow_lower_block_heights.unwrap_or_default()
+                && _mining_info.height != last_block_height)
+                || _mining_info.height > last_block_height
+            {
+                last_block_height = _mining_info.height;
+                let _mining_info_polling_result = MiningInfoPollingResult {
+                    mining_info: _mining_info.clone(),
+                    chain: chain.clone(),
+                };
+                match sender.send(_mining_info_polling_result) {
+                    Ok(_) => {}
+                    Err(_) => {}
+                }
+            }
+            drop(_mining_info);
+        } else {
+            if !is_hdpool {
+                if !request_failure {
+                    request_failure = true;
+                    last_outage_reminder_sent = Local::now();
+                    println!("  {} {} {}",
+                        super::get_time().white(),
+                        format!("{}", &*chain.name).color(&*chain.color),
+                        "Could not retrieve mining info!".red()
+                    );
+                    info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, mining_info_response);
+                } else {
+                    let outage_duration = Local::now() - last_request_success;
+                    let last_reminder = Local::now() - last_outage_reminder_sent;
+                    if last_reminder.num_seconds()
+                        >= crate::CONF.outage_status_update_interval.unwrap_or(300u16) as i64
+                    {
+                        last_outage_reminder_sent = Local::now();
+                        let outage_duration_str =
+                            super::format_timespan(outage_duration.num_seconds() as u64);
+                        println!("  {} {} {}",
+                            super::get_time().white(),
+                            format!("{} - Last: {}", &*chain.name, last_block_height).color(&*chain.color),
+                            format!("Outage continues, time unavailable so far: {}.", outage_duration_str).red()
+                        );
+                        info!("{} - Last: {} - Outage continues, time unavailable so far: {}", &*chain.name, last_block_height, outage_duration_str);
+                    }
+                }
             }
         }
         let mut interval = chain.get_mining_info_interval.unwrap_or(3) as u64;
