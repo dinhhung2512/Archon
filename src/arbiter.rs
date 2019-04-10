@@ -100,10 +100,18 @@ fn thread_handle_hdpool_nonce_submissions(
     chain: PocChain,
     receiver: crossbeam::channel::Receiver<HDPoolSubmitNonceInfo>,
     tx: mpsc::UnboundedSender<Message>,
+    ks_rx: crossbeam::channel::Receiver<bool>,
 ) {
     let miner_mark = "20190327";
     let account_key = chain.account_key.clone().unwrap_or(String::from(""));
     loop {
+        let ks = match ks_rx.try_recv() {
+            Ok(signal) => signal,
+            Err(_) => false,
+        };
+        if ks == true {
+            break;
+        }
         match receiver.try_recv() {
             Ok(submit_nonce_info) => {
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
@@ -128,7 +136,6 @@ fn thread_handle_hdpool_nonce_submissions(
                             Ok(_) => debug!("HDP-WS: Sent response signal successfully."),
                             Err(_) => warn!("HDP-WS: Failed to send response signal.")
                         };
-                        break;
                     },
                 }
             },
@@ -144,6 +151,8 @@ fn thread_hdpool_websocket(
 ) {
     loop {
         let (tx, rx) = mpsc::unbounded();
+        let (kill_switch_hb_tx, kill_switch_hb_rx) = crossbeam::channel::unbounded();
+        let (kill_switch_nonce_tx, kill_switch_nonce_rx) = crossbeam::channel::unbounded();
         let rx = rx.map_err(|_| panic!());
         let txc = tx.clone();
         let txs = tx.clone();
@@ -156,6 +165,13 @@ fn thread_hdpool_websocket(
         // Spawn thread for the heartbeat loop to run in.
         let hb_child_thread = thread::spawn(move || {
             loop {
+                let ks = match kill_switch_hb_rx.try_recv() {
+                    Ok(signal) => signal,
+                    Err(_) => false,
+                };
+                if ks == true {
+                    break;
+                }
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
                 let hostname = match gethostname::gethostname().to_str() {
                     Some(hostname) => format!("{} via ", hostname),
@@ -174,7 +190,6 @@ fn thread_hdpool_websocket(
                     },
                     Err(why) => {
                         warn!("HDPool Websocket Heartbeat failure: {:?}.", why);
-                        break;
                     },
                 };
                 thread::sleep(std::time::Duration::from_secs(5));
@@ -185,7 +200,7 @@ fn thread_hdpool_websocket(
         let chain_copy = chain.clone();
         let nonce_submission_receiver_clone = nonce_submission_receiver.clone();
         let nonce_child_thread = thread::spawn(move || {
-            thread_handle_hdpool_nonce_submissions(chain_copy, nonce_submission_receiver_clone, txs);
+            thread_handle_hdpool_nonce_submissions(chain_copy, nonce_submission_receiver_clone, txs, kill_switch_nonce_rx);
         });
 
         let mining_info_sender = mining_info_sender.clone();
@@ -246,6 +261,9 @@ fn thread_hdpool_websocket(
         });
 
         tokio::runtime::run(client.map_err(|e| error!("{:?}", e)));
+
+        let _ = kill_switch_hb_tx.send(true).unwrap();
+        let _ = kill_switch_nonce_tx.send(true).unwrap();
 
         let _ = nonce_child_thread.join();
         let _ = hb_child_thread.join();
