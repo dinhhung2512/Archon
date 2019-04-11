@@ -133,6 +133,12 @@ If you need more control over your chains, you can add any of these parameters t
 - `accountKey`
   - Optional. **REQUIRED FOR MINING BHD THROUGH `HPOOL` or `HDPOOL` _(Direct only, not required if you are using HDProxy for HDPool)_**
   - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Not used if `isHpool` and `isHdpool` are both false.*
+- `minerName`
+  - Optional.
+  - Only used for mining via HDPool directly (Not with HDProxy)
+  - Set this to use a custom name for reporting your miner name to HDPool, it will be reported as `<MINER_NAME> via Archon v<VERSION>`
+  - If not specified, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon v<VERSION>` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon v<VERSION>`
+  - NOTE: Don't be alarmed if you see multiple miners in the HDPool interface after changing this setting - previously used miner names will no longer appear after a period of 24 hours with no use, although it might have an effect on your capacity/mortgage if you change it several times in a short period
 - `isBhd`
   - Optional. Default = false
   - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. Not required if `isHpool` or `isHdpool` is set to `true`.

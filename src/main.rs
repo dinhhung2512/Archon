@@ -1,4 +1,4 @@
-#![feature(vec_remove_item, proc_macro_hygiene, decl_macro)]
+#![feature(vec_remove_item)]
 #[cfg(target_os = "windows")]
 use ansi_term;
 use chrono::{DateTime, Local};
@@ -296,9 +296,11 @@ fn main() {
                     }
                     if crate::CONF.priority_mode.unwrap_or(true) {
                         if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
-                            let mut requeue_str = "Yes";
+                            let requeue_str;
                             if !chain.requeue_interrupted_blocks.unwrap_or(true) {
-                                requeue_str = "No";
+                                requeue_str = "No".red();
+                            } else {
+                              requeue_str = "Yes".color(chain_color);
                             }
                             println!("{}",
                                 format!("    {}\n      {} @ {}\n        {} {} | {} {} | {} {}",
@@ -310,7 +312,7 @@ fn main() {
                                     "Target Deadline:".color(chain_color).bold(),
                                     format!("{}", chain_tdl_str).color(chain_color),
                                     "Requeue:".color(chain_color).bold(),
-                                    format!("{}", requeue_str).color(chain_color),
+                                    format!("{}", requeue_str),
                                 )
                             );
                         } else {

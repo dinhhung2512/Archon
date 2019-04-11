@@ -116,11 +116,18 @@ fn thread_handle_hdpool_nonce_submissions(
             Ok(submit_nonce_info) => {
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
                 let unix_timestamp = Local::now().timestamp();
-                let hostname = match gethostname::gethostname().to_str() {
-                    Some(hostname) => format!("{} via ", hostname),
-                    None => String::from("")
+                let miner_name = match chain.miner_name.clone() {
+                    Some(miner_name) => {
+                        format!("{} via ", miner_name)
+                    },
+                    _ => {
+                        match gethostname::gethostname().to_str() {
+                            Some(hostname) => format!("{} via ", hostname),
+                            None => String::from("")
+                        }
+                    }
                 };
-                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{}{} v{}","submit":[{{"accountId":{},"height":{},"nonce":{},"deadline":{},"ts":{}}}]}}}}"#, account_key, capacity_gb, miner_mark, hostname, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.height, submit_nonce_info.nonce, submit_nonce_info.deadline_unadjusted, unix_timestamp);
+                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{}{} v{}","submit":[{{"accountId":{},"height":{},"nonce":{},"deadline":{},"ts":{}}}]}}}}"#, account_key, capacity_gb, miner_mark, miner_name, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.height, submit_nonce_info.nonce, submit_nonce_info.deadline_unadjusted, unix_timestamp);
                 debug!("HDPool Websocket: SubmitNonce message: {}", message);
                 match tx.unbounded_send(Message::Text(message.clone().into())) {
                     Ok(_) => {
@@ -161,6 +168,17 @@ fn thread_hdpool_websocket(
         let addr = Url::parse("wss://hdminer.hdpool.com").unwrap();
         let miner_mark = "20190327";
         let account_key = chain.account_key.clone().unwrap_or(String::from(""));
+        let miner_name = match chain.miner_name.clone() {
+            Some(miner_name) => {
+                format!("{} via ", miner_name)
+            },
+            _ => {
+                match gethostname::gethostname().to_str() {
+                    Some(hostname) => format!("{} via ", hostname),
+                    None => String::from("")
+                }
+            }
+        };
 
         // Spawn thread for the heartbeat loop to run in.
         let hb_child_thread = thread::spawn(move || {
@@ -173,17 +191,8 @@ fn thread_hdpool_websocket(
                     break;
                 }
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
-                let hostname = match gethostname::gethostname().to_str() {
-                    Some(hostname) => format!("{} via ", hostname),
-                    None => String::from("")
-                };
                 let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{}{} v{}","miner_mark":"{}","capacity":{}}}}}"#,
-                    account_key,
-                    hostname,
-                    crate::uppercase_first(crate::APP_NAME),
-                    crate::VERSION,
-                    miner_mark,
-                    capacity_gb);
+                    account_key, miner_name, crate::uppercase_first(crate::APP_NAME), crate::VERSION, miner_mark, capacity_gb);
                 match txc.unbounded_send(Message::Text(data.clone().into())) {
                     Ok(_) => {
                         trace!("Heartbeat Sent:\n    {}", data);

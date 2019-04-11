@@ -30,6 +30,9 @@ pub struct PocChain {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_key: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub miner_name: Option<String>,
+
     #[serde(default)]
     pub url: String,
 
