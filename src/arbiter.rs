@@ -9,6 +9,7 @@ use tungstenite::Message;
 use std::collections::HashMap;
 use std::sync::mpsc as std_mpsc;
 use std::thread;
+use reqwest::header;
 
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
@@ -33,24 +34,25 @@ pub struct HDPoolSubmitNonceInfo {
 fn create_chain_nonce_submission_client(chain_index: u8) {
     // get current chain
     let chain = super::get_chain_from_index(chain_index).unwrap();
-    use reqwest::header;
     let mut default_headers = header::HeaderMap::new();
     // if this chain is for hpool, add a default header to this client with the user's account key
     if chain.is_hpool.unwrap_or_default() {
         // get account key from config
         let account_key_header = chain.account_key.unwrap_or(String::from(""));
-        // attempt to parse account key into a HeaderValue
-        let account_key_header_value: header::HeaderValue = match account_key_header.parse() {
-            Ok(val) => {
-                info!("{} (HPOOL) - Set default headers to include AccountKey=>{}", &*chain.name, account_key_header);
-                val
+        default_headers.insert("X-Account", get_header_value(account_key_header));
+        let miner_name = match chain.miner_name.clone() {
+            Some(miner_name) => {
+                format!("{} via {} v{}", miner_name, super::uppercase_first(super::APP_NAME), super::VERSION)
             },
-            Err(why) => {
-                warn!("Couldn't parse account key into a HeaderValue for chain #{}: {:?}", chain_index, why);
-                "Invalid Header Data".parse().unwrap()
-            },
+            _ => {
+                match gethostname::gethostname().to_str() {
+                    Some(hostname) => format!("{} via {} v{}", hostname, super::uppercase_first(super::APP_NAME), super::VERSION),
+                    None => format!("{} v{}", super::uppercase_first(super::APP_NAME), super::VERSION)
+                }
+            }
         };
-        default_headers.insert("X-Account", account_key_header_value);
+        default_headers.insert("X-MinerName", get_header_value(miner_name));
+        default_headers.insert("X-Capacity", get_header_value(format!("{}", super::get_total_plots_size_in_tebibytes() * 1024f64)));
     }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
     chain_nonce_submission_clients.insert(
@@ -62,6 +64,17 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
             .unwrap()
         );
     drop(chain_nonce_submission_clients);
+}
+
+fn get_header_value(string_data: String) -> header::HeaderValue {
+    let header_value: header::HeaderValue = match string_data.parse() {
+        Ok(val) => val,
+        Err(why) => {
+            warn!("Couldn't parse {} into a HeaderValue: {:?}", string_data, why);
+            "Invalid Header Data".parse().unwrap()
+        }
+    };
+    header_value
 }
 
 pub fn thread_arbitrate() {
@@ -329,27 +342,67 @@ fn thread_get_mining_info(
             false => {
                 let mut url = String::from(chain.clone().url);
                 url.push_str("/burst?requestType=getMiningInfo");
-                match client
-                    .get(url.as_str())
-                    .header("User-Agent", 
-                        format!("{} v{}", 
-                            super::uppercase_first(super::APP_NAME), 
-                            super::VERSION
-                        )
-                    )
-                    .send() {
-                    Ok(mut resp) => {
-                        match &resp.text() {
-                            Ok(text) => text.to_string(),
-                            Err(why) => {
-                                warn!("GetMiningInfo({}): Could not get response text: {}", &*chain.name, why);
-                                String::from("none")
+                if chain.is_hpool.unwrap_or_default() && chain.account_key.is_some() {
+                    let miner_name = match chain.miner_name.clone() {
+                        Some(miner_name) => {
+                            format!("{} via ", miner_name)
+                        },
+                        _ => {
+                            match gethostname::gethostname().to_str() {
+                                Some(hostname) => format!("{} via ", hostname),
+                                None => String::from("")
                             }
                         }
-                    },
-                    Err(why) => {
-                        debug!("GetMiningInfo({}): Request failed: {}", &*chain.name, why);
-                        String::from("none")
+                    };
+                    match client
+                        .get(url.as_str())
+                        .header("User-Agent", 
+                            format!("{} v{}", 
+                                super::uppercase_first(super::APP_NAME), 
+                                super::VERSION
+                            )
+                        )
+                        .header("X-Account", format!("{}", chain.account_key.clone().unwrap_or(String::from(""))))
+                        .header("X-MinerName", format!("{}{} v{}", miner_name, super::uppercase_first(super::APP_NAME), super::VERSION))
+                        .header("X-Capacity", format!("{}", super::get_total_plots_size_in_tebibytes() * 1024f64))
+                        .send() {
+                        Ok(mut resp) => {
+                            match &resp.text() {
+                                Ok(text) => text.to_string(),
+                                Err(why) => {
+                                    warn!("GetMiningInfo({}): Could not get response text: {}", &*chain.name, why);
+                                    String::from("none")
+                                }
+                            }
+                        },
+                        Err(why) => {
+                            debug!("GetMiningInfo({}): Request failed: {}", &*chain.name, why);
+                            String::from("none")
+                        }
+                    }
+                } else {
+                    match client
+                        .get(url.as_str())
+                        .header("User-Agent", 
+                            format!("{} v{}", 
+                                super::uppercase_first(super::APP_NAME), 
+                                super::VERSION
+                            )
+                        )
+                        .send() {
+                        Ok(mut resp) => {
+                            match &resp.text() {
+                                Ok(text) => text.to_string(),
+                                Err(why) => {
+                                    warn!("GetMiningInfo({}): Could not get response text: {}", &*chain.name, why);
+                                    String::from("none")
+                                }
+                            }
+                        },
+                        Err(why) => {
+                            debug!("GetMiningInfo({}): Request failed: {}", &*chain.name, why);
+                            String::from("none")
+                        }
                     }
                 }
             }
