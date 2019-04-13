@@ -60,6 +60,7 @@ Your PoC chains are defined in the `archon.yaml` configuration file, [see below]
 Note: You must have at least one PoC Chain defined, or Archon will have nothing to do!
 
 Example chain layouts for different purposes, using the bare minimum information required by Archon:
+**NOTE: For mining via HPool or HDPool - you must specify your plot size using the `totalPlotsSizeIn___` config options - Archon will submit these to the pool which will then use them to calculate your shares.** *This is a temporary solution, until automatic summing up of your plot capacity from mining submissions is implemented.*
 ```yaml
 pocChains:
 # BHD via HDProxy
@@ -241,7 +242,7 @@ Use these configuration options to control Archon's behavior.
 - `totalPlotsSizeInGigabytes` *(1 GB = 10^9 bytes)*
   - These are all optional, the only reason there are 4 of them is for convenience, so you don't have to convert units. Just fill in whichever one you know. **NOTE:** *If you decide to fill in more than one of these, Archon will __add them together__ to calculate a total.*
   - These values are used for calculating dynamic deadlines. If you don't have any specified, dynamic deadlines will be disabled automatically.
-  - When HDProxy functionality is implemented, Archon will also use these values for reporting your capacity to HDPool. **WARNING:** *Overstating your capacity to HDPool (aka cheating) is likely to get your account banned and your funds forfeited. Be fair to other miners and be honest, it's in everyone's best interests!*
+  - Archon will also use these values for reporting your capacity to HDPool & HPool to be used for calculating your shares distribution. **WARNING:** *Overstating your capacity (aka cheating) is likely to get your account banned and your funds forfeited. Be fair to other miners and be honest, it's in everyone's best interests! This is a temporary solution until automatic plot capacity calculation can be implemented.*
 - `showHumanReadableDeadlines`
   - Optional. Default = false
   - Appends a human readable time to deadlines and other durations. Eg: 3345951 **(1m 8d 17:25:51)**
@@ -296,7 +297,7 @@ Generated File Contents:
 ## You can also join the Discord at https://discord.gg/ZdVbrMn if you need further help! :)  ##
 ###############################################################################################
 
-# Grace Period: How long (in seconds) Archon will let blocks mine for.
+# Grace Period: How long (in seconds) Archon will let blocks mine for before considering them to be completed.
 # NOTE: This value is extremely important, it is used as a timer by Archon to determine how much time must elapse after a block starts
 #   before Archon can send the next queued block to be mined. Set it too small, and Archon will instruct your miners to start mining a 
 #   new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely.
@@ -336,8 +337,9 @@ usePocChainColors: true
 #   The lower this number, the more error messages about outages you will see in the event of an outage.
 outageStatusUpdateInterval: 300
 
-# Total Plots Size In (Unit): These are used for calculating dynamic deadlines, different units are provided for convenience.
+# Total Plots Size In (Unit): These are used for calculating dynamic deadlines, and submitting your plot capacity to HDPool/HPool; Different units are provided only for convenience.
 # These options are all optional, if more than one is specified, they will be *ADDED TOGETHER*, so don't fill each one out with your total plots size! Eg: 10 TiB + 3 TB + 1024 GiB + 8000 GB = 21.0044417195022106170654296875 TiB
+# IF YOU ARE MINING VIA HPOOL OR HDPOOL, YOU MUST SPECIFY YOUR PLOT SIZE HERE! (At least until I implement automatically summing it up)
 totalPlotsSizeInTebibytes: 10    # 10 TiB
 #totalPlotsSizeInTerabytes: 3     # 3 TB (2.72 TiB)
 #totalPlotsSizeInGibibytes: 1024  # 1024 GiB (1 TiB)
@@ -376,12 +378,13 @@ showMinerAddresses: false
 ######## https://github.com/Bloodreaver/Archon#defining-your-mining-chains ########
 
 pocChains:
-### BHD via HDPool - no need for HDProxy ###
-  - name: BTCHD - [HDPool]
+# BHD via HDPool (Direct - no other applications needed)
+  - name: BTCHD - HDPool [Direct]
     priority: 0
-    isHdpool: true
+  # Your HDPool account key goes here:
     accountKey: abcdefg-abcdefg-abcdefg-abcdefg
-    url: "" # Not required for HDPool, Archon knows it. If you wish to use HDProxy you can specify a URL here.
+    isHdpool: true
+#    minerName: My Miner
     color: cyan
 
 ### BURST via VLP pool (http://voiplanparty.com) ###
@@ -398,7 +401,7 @@ pocChains:
     isPool: true
     url: "http://75.100.126.230:8124"
     targetDeadline: 7200
-    color: blue
+    color: yellow
 ```
 ## Donations
 Donations are much appreciated, you can use any of the following:
