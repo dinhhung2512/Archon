@@ -73,20 +73,24 @@ pocChains:
 # BHD via HDPool (Direct - no other applications needed)
   - name: Second Chain
     priority: 1
-    accountKey: 1 2 3, this is my account key
+  # Your HDPool account key goes here:
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
     isHdpool: true
+#    minerName: My Miner
     color: blue
 
 # BHD via HPool
   - name: Third Chain
     priority: 2
-    accountKey: 1 2 3, this is my account key
+  # Your HPool API Key / Account key goes here:
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
     isHpool: true
-    url: "http://bhd.hpool.com" # not sure if this URL is correct, it's down as of writing this
+    url: "http://btchd.hpool.com"
+#    minerName: My Miner
     color: yellow
 
 # BHD Solo
-#  (You must have a BHD wallet running in mining mode / with RPC server on, 
+#  (You must have a BHD wallet running in mining mode / with RPC server on,
 #   on the same machine as Archon is running on with these settings!)
   - name: Fourth Chain
     priority: 3
@@ -135,10 +139,11 @@ If you need more control over your chains, you can add any of these parameters t
   - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Not used if `isHpool` and `isHdpool` are both false.*
 - `minerName`
   - Optional.
-  - Only used for mining via HDPool directly (Not with HDProxy)
-  - Set this to use a custom name for reporting your miner name to HDPool, it will be reported as `<MINER_NAME> via Archon v<VERSION>`
-  - If not specified, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon v<VERSION>` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon v<VERSION>`
-  - NOTE: Don't be alarmed if you see multiple miners in the HDPool interface after changing this setting - previously used miner names will no longer appear after a period of 24 hours with no use, although it might have an effect on your capacity/mortgage if you change it several times in a short period
+  - Set this to use a custom name for reporting your miner name to your upstream pool, it will be reported as `<MINER_NAME> via Archon v<VERSION>`
+  - If not specified, the following will apply:
+    - If the chain is for HPool or HDPool, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon v<VERSION>` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon v<VERSION>`. 
+    - For other chains, Archon will automatically set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially expose your identity to the public.
+  - *Note: The User-Agent header that Archon sends with submissions will **always** be `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>`, you cannot customise that. This is only intended to give you a way to control the name that appears in the HDPool / HPool web interface, for monitoring purposes.*
 - `isBhd`
   - Optional. Default = false
   - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. Not required if `isHpool` or `isHdpool` is set to `true`.
@@ -195,13 +200,20 @@ numericIdToTargetDeadline:
 - `requeueInterruptedBlocks`
   - Optional. Default = true
   - If you disable this feature, this chain's blocks which get interrupted by a higher priority chain **WILL NOT** be requeued and mined after the higher priority chain finishes.
+  - Only used if Archon is running in priority mode with block interrupting enabled (which is the default).
     - Use case: If this chain is a testnet chain or something you don't really care about mining every block for.
+- `maximumRequeueTimes`
+  - Optional.
+  - Specify a maximum number of times that a block for this chain will be requeued.
+  - Only used if Archon is running in priority mode with block interrupting enabled (which is the default), and `requeueInterruptedBlocks` has not been disabled for this chain.
+    - Use case: For something like mining a testnet where you don't want to continually mine the same block if it keeps getting interrupted by a higher priority chain.
 
 ## Global Configuration Options
 Use these configuration options to control Archon's behavior.
 - `gracePeriod`
   - Required.
-  - **This value is extremely important**, it is used as a timer by Archon to determine how much time must elapse after a block starts before Archon can send the next queued block to be mined. Set it too small, and Archon will instruct your miners to start mining a new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely. Ideally it should be set around 5 seconds longer than your regular scan times, 5 seconds just to give it a safety net.
+  - __The amount of time that must elapse after a block starts, before Archon considers the block to be "complete".__
+  - **This value is extremely important**, it is used as a timer by Archon to determine how much time must elapse after a block starts before Archon can send the next queued block to be mined, and also whether or not a new block should cause an old block to be interrupted (and perhaps requeued). Set it too small, and Archon will instruct your miners to start mining a new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely. Ideally it should be set around 5 seconds longer than your regular scan times. *(5 seconds just to give it a safety net to compensate for fluctuations)*
 - `priorityMode`
   - Optional. Default = true
   - This controls how Archon determines the order in which to send blocks to be mined.

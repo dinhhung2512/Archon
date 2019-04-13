@@ -61,6 +61,9 @@ pub struct PocChain {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requeue_interrupted_blocks: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maximum_requeue_times: Option<u8>,
 }
 
 impl PartialEq for PocChain {

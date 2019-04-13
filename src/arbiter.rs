@@ -37,22 +37,24 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
     let mut default_headers = header::HeaderMap::new();
     // if this chain is for hpool, add a default header to this client with the user's account key
     if chain.is_hpool.unwrap_or_default() {
+        let app_name_ver = format!("{} v{}", super::uppercase_first(super::APP_NAME), super::VERSION);
         // get account key from config
         let account_key_header = chain.account_key.unwrap_or(String::from(""));
         default_headers.insert("X-Account", get_header_value(account_key_header));
         let miner_name = match chain.miner_name.clone() {
             Some(miner_name) => {
-                format!("{} via {} v{}", miner_name, super::uppercase_first(super::APP_NAME), super::VERSION)
+                format!("{} via {}", miner_name, app_name_ver.clone())
             },
             _ => {
                 match gethostname::gethostname().to_str() {
-                    Some(hostname) => format!("{} via {} v{}", hostname, super::uppercase_first(super::APP_NAME), super::VERSION),
-                    None => format!("{} v{}", super::uppercase_first(super::APP_NAME), super::VERSION)
+                    Some(hostname) => format!("{} via {}", hostname, app_name_ver.clone()),
+                    None => app_name_ver.clone()
                 }
             }
         };
         default_headers.insert("X-MinerName", get_header_value(miner_name));
         default_headers.insert("X-Capacity", get_header_value(format!("{}", super::get_total_plots_size_in_tebibytes() * 1024f64)));
+        default_headers.insert("X-Miner", get_header_value(app_name_ver.clone()));
     }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
     chain_nonce_submission_clients.insert(
@@ -602,7 +604,8 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
             }
         }
     }
-    if do_requeue {
+    let times_requeued = get_num_times_requeued(current_chain_index, requeued_height);
+    if do_requeue && times_requeued < current_chain.maximum_requeue_times.unwrap_or(u8::max_value()) {
         info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
         // set the queue status for this chain back by 1, thereby "requeuing" it
         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
@@ -610,16 +613,30 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
         trace!("SET START - Chain #{} Block #{} ==> #{}", current_chain_index, requeued_height, requeued_height - 1);
         let mut block_start_printed_map = crate::BLOCK_START_PRINTED.lock().unwrap();
         block_start_printed_map.insert(current_chain_index, requeued_height - 1);
+        // update the number of times this block height has been requeued
+        let mut chain_requeue_times_map = crate::CHAIN_REQUEUE_TIMES.lock().unwrap();
+        chain_requeue_times_map.insert(current_chain_index, (requeued_height, times_requeued + 1));
+        // print
+        super::print_block_requeued_or_interrupted(
+            &*current_chain.name,
+            &*current_chain.color,
+            requeued_height,
+            do_requeue,
+            times_requeued,
+            current_chain.maximum_requeue_times,
+        );
     } else {
         info!("INTERRUPT BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
+        // print
+        super::print_block_requeued_or_interrupted(
+            &*current_chain.name,
+            &*current_chain.color,
+            requeued_height,
+            false,
+            times_requeued,
+            current_chain.maximum_requeue_times,
+        );
     }
-    // print
-    super::print_block_requeued_or_interrupted(
-        &*current_chain.name,
-        &*current_chain.color,
-        requeued_height,
-        do_requeue,
-    );
 }
 
 fn has_grace_period_elapsed() -> bool {
@@ -638,20 +655,34 @@ fn has_grace_period_elapsed() -> bool {
     } else {
         return true; // force starting a block if no blocks have been started
     }
-}
+    }
 
-pub fn get_time_since_block_start(height: u32) -> Option<u64> {
+pub fn get_time_since_block_start(height: u32) -> u64 {
     let current_chain_index = get_chain_index_from_height(height);
     let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
     if chain_queue_status_map.len() > 0 {
         match chain_queue_status_map.get(&current_chain_index) {
             Some((_, start_time)) => {
-                return Some((Local::now() - *start_time).num_seconds() as u64);
-            }
-            None => {}
+                return (Local::now() - *start_time).num_seconds() as u64;
+            },
+            _ => return 0u64,
+        };
+        }
+    return 0u64;
+}
+
+fn get_time_since_block_start_ms(height: u32) -> u64 {
+    let current_chain_index = get_chain_index_from_height(height);
+    let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
+    if chain_queue_status_map.len() > 0 {
+        match chain_queue_status_map.get(&current_chain_index) {
+            Some((_, start_time)) => {
+                return (Local::now() - *start_time).num_milliseconds() as u64;
+                },
+            _ => return 0u64,
         };
     }
-    return None;
+    return 0u64;
 }
 
 fn get_queued_chain_info(index: u8) -> (u32, DateTime<Local>) {
@@ -664,6 +695,20 @@ fn get_queued_chain_info(index: u8) -> (u32, DateTime<Local>) {
             return (0u32, Local::now());
         }
     };
+}
+
+fn get_num_times_requeued(index: u8, height: u32) -> u8 {
+    let chain_requeue_times_map = crate::CHAIN_REQUEUE_TIMES.lock().unwrap();
+    match chain_requeue_times_map.get(&index) {
+        Some((block_height, requeues)) => {
+            if *block_height == height {
+                *requeues
+            } else {
+                0u8
+            }
+        },
+        None => 0u8
+    }
 }
 
 pub fn get_latest_chain_info(index: u8) -> (u32, DateTime<Local>) {
@@ -1078,6 +1123,8 @@ pub fn process_nonce_submission(
                     print_deadline = false;
                 }
                 let mut failure_message = String::from("");
+                // find time since block was started
+                let time_since_block_started = get_time_since_block_start_ms(height);
                 if print_deadline {
                     super::print_nonce_submission(
                         chain_index,
@@ -1088,6 +1135,7 @@ pub fn process_nonce_submission(
                         target_deadline,
                         id_override,
                         remote_addr,
+                        time_since_block_started,
                     );
                 }
                 if !deadline_over_best {

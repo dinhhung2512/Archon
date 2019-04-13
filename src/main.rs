@@ -63,6 +63,10 @@ lazy_static! {
         let chain_nonce_submission_clients = HashMap::new();
         Arc::new(Mutex::new(chain_nonce_submission_clients))
     };
+    static ref CHAIN_REQUEUE_TIMES: Arc<Mutex<HashMap<u8, (u32, u8)>>> = {
+        let chain_requeue_times_map = HashMap::new();
+        Arc::new(Mutex::new(chain_requeue_times_map))
+    };
     #[derive(Serialize)]
     pub static ref CONF: Config = {
         let c: Config = match File::open("archon.yaml").map(|file| {
@@ -300,7 +304,11 @@ fn main() {
                             if !chain.requeue_interrupted_blocks.unwrap_or(true) {
                                 requeue_str = "No".red();
                             } else {
-                              requeue_str = "Yes".color(chain_color);
+                                let requeue_times_str = match chain.maximum_requeue_times {
+                                    Some(max_requeues) => format!(" ({}x)", max_requeues),
+                                    None => String::from("")
+                                };
+                                requeue_str = format!("Yes{}", requeue_times_str).as_str().color(chain_color);
                             }
                             println!("{}",
                                 format!("    {}\n      {} @ {}\n        {} {} | {} {} | {} {}",
@@ -751,27 +759,34 @@ fn print_block_requeued_or_interrupted(
     chain_color: &str,
     height: u32,
     requeued: bool,
+    times_requeued: u8,
+    max_requeues: Option<u8>,
 ) {
     let border = String::from("------------------------------------------------------------------------------------------");
     let color = get_color(chain_color);
     if requeued {
-        println!("{}", border.yellow());
-        println!("  {} {} => {} | {}",
+        let requeue_times_str = match max_requeues {
+            Some(max) => format!(" (#{} of {})", times_requeued + 1, max),
+            _ => String::from("")
+        };
+        println!("{}\n  {} {} => {} | {}{}\n{}",
+            border.yellow(),
             format!("{}", get_time()).white(),
             "INTERRUPTED & REQUEUED BLOCK".color(color),
             format!("{}", chain_name).color(color),
-            format!("#{}", height).color(color)
+            format!("#{}", height).color(color),
+            requeue_times_str.color(color),
+            border.yellow(),
         );
-        println!("{}", border.yellow());
     } else {
-        println!("{}", border.red());
-        println!("  {} {} => {} | {}",
+        println!("{}\n  {} {} => {} | {}\n{}",
+            border.red(),
             format!("{}", get_time()).white(),
             "INTERRUPTED BLOCK".red(),
             format!("{}", chain_name).color(color),
-            format!("#{}", height).color(color)
+            format!("#{}", height).color(color),
+            border.red(),
         );
-        println!("{}", border.red());
     }
 }
 
@@ -802,7 +817,7 @@ fn print_block_started(
     base_target: u32,
     gen_sig: String,
     target_deadline: u64,
-    last_block_time: Option<u64>,
+    last_block_time: u64,
 ) {
     if !is_block_start_printed(chain_index, height) {
         let current_chain = get_chain_from_index(chain_index).unwrap();
@@ -810,29 +825,24 @@ fn print_block_started(
         let border = String::from("------------------------------------------------------------------------------------------");
         let color = get_color(&*current_chain.color);
         let last_block_time_str;
-        match last_block_time {
-            Some(time) => {
-                if time > 0 {
-                    let human_time;
-                    if CONF.show_human_readable_deadlines.unwrap_or(true) {
-                        human_time = format!(" ({})", format_timespan(time));
-                    } else {
-                        human_time = String::from("");
-                    }
-                    let plural = match time {
-                        1 => "",
-                        _ => "s",
-                    };
-                    last_block_time_str = format!(
-                        "{}\n  Block finished in {} second{}{}\n",
-                        border, time, plural, human_time
-                    );
-                } else {
-                    last_block_time_str = String::from("")
-                }
+        if last_block_time > 0 {
+            let human_time;
+            if CONF.show_human_readable_deadlines.unwrap_or(true) {
+                human_time = format!(" ({})", format_timespan(last_block_time));
+            } else {
+                human_time = String::from("");
             }
-            None => last_block_time_str = String::from(""),
-        };
+            let plural = match last_block_time {
+                1 => "",
+                _ => "s",
+            };
+            last_block_time_str = format!(
+                "{}\n  Block finished in {} second{}{}\n",
+                border, last_block_time, plural, human_time
+            );
+        } else {
+            last_block_time_str = String::from("")
+        }
         /*let mut prev_block_time = 0;
         if height > 0 {
             prev_block_time = arbiter::get_time_since_block_start(height - 1).unwrap_or(0);
@@ -1033,6 +1043,7 @@ fn print_nonce_submission(
     target_deadline: u64,
     id_override: bool,
     remote_addr: String,
+    time_since_block_started: u64,
 ) {
     let current_chain = get_chain_from_index(index).unwrap();
 
@@ -1074,8 +1085,12 @@ fn print_nonce_submission(
             },
             false => String::from(""),
         };
+        let time_since_block_started_str = match time_since_block_started {
+            0 => String::from(""),
+            _ => format!(" ({}ms)", time_since_block_started),
+        };
         if !id_override {
-            println!("    {}{} ==> {}{} ==> {} {}\n        {}                          {}",
+            println!("    {}{} ==> {}{} ==> {} {}\n        {}                          {}{}",
                 remote_address.color("white"),
                 user_agent.to_string().color(color).bold(),
                 "Block #".color(color).bold(),
@@ -1083,10 +1098,11 @@ fn print_nonce_submission(
                 "Numeric ID:".color(color).bold(),
                 censor_account_id(account_id).color(color),
                 "Deadline:".color(color).bold(),
-                deadline_string.color(deadline_color)
+                deadline_string.color(deadline_color),
+                time_since_block_started_str.color(color),
             );
         } else {
-            println!("    {}{} ==> {}{} ==> {} {}{}\n        {}                          {}",
+            println!("    {}{} ==> {}{} ==> {} {}{}\n        {}                          {}{}",
                 remote_address.color("white"),
                 user_agent.to_string().color(color).bold(),
                 "Block #".color(color).bold(),
@@ -1096,6 +1112,7 @@ fn print_nonce_submission(
                 format!(" [TDL: {}]", target_deadline).red(),
                 "Deadline:".color(color).bold(),
                 deadline_string.color(deadline_color),
+                time_since_block_started_str.color(color),
             );
         }
     }
@@ -1321,7 +1338,7 @@ fn format_timespan(timespan: u64) -> String {
 fn censor_account_id(account_id: u64) -> String {
     let mut as_string = account_id.to_string();
     if CONF.mask_account_ids_in_console.unwrap_or_default() {
-        as_string.replace_range(1..as_string.len() - 3, "XXXXXXXXXXXXXXXX");
+        as_string.replace_range(1..as_string.len() - 3, "XXX");
     }
     return as_string;
 }
