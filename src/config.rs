@@ -144,6 +144,12 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_miner_addresses: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub miner_update_timeout: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_plot_capacity: Option<f64>,
 }
 
 impl Config {

@@ -273,6 +273,13 @@ Use these configuration options to control Archon's behavior.
 - `showMinerAddresses`
   - Optional. Default = false
   - Shows the address that deadline submissions are received from.
+- `initialPlotCapacity`
+  - Optional.
+  - You may specify this as a value to use for initial plot capacity just after Archon starts up. *It will only be used until Archon receives info from your miners about your plot capacity, use it if you wish to use dynamic deadlines and your miner doesn't submit capacity headers until it submits a nonce. Or, update to a miner that does! (Scavenger 1.7.6 submits headers on getMiningInfo requests, which is much better)*
+- `minerUpdateTimeout`
+  - Optional. Default = 1800 (30 minutes)
+  - The amount of time that a miner must stop communicating with Archon for, for Archon to ignore that miner's capacity in Plot Capacity calculations.
+  - If a miner doesn't communicate with Archon for longer than this period, Archon will no longer consider that miner's reported capacity as part of your total plot size. *For example, with the default setting of 30 minutes: If Miner System A has 50 TiB and Miner System B has 30 TiB, but Miner System B stops communication with Archon for 30 minutes or more, Archon will report your total plot capacity as 50 TiB rather than 80 TiB.*
 
 ## Sample configuration file
 Archon will look in the working directory (usually the same location as the executable) for `archon.yaml`.

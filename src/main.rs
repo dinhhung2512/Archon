@@ -1070,12 +1070,15 @@ fn get_total_plots_size_in_tebibytes() -> f64 {
     let mut plots_capacity = 0f64;
     let current_time = Local::now();
     for (val, last_updated) in connected_miners_map.values() {
-        // check that it hasn't been more than 30 minutes since this miner connected
-        if (current_time - *last_updated).num_seconds() < 1800 {
+        if (current_time - *last_updated).num_seconds() < CONF.miner_update_timeout.unwrap_or(1800) as i64 {
             plots_capacity += *val;
         }
     }
-    plots_capacity
+    if plots_capacity == 0f64 && CONF.initial_plot_capacity.is_some() {
+        CONF.initial_plot_capacity.unwrap()
+    } else {
+        plots_capacity
+    }
 }
 
 fn get_dynamic_deadline_for_block(base_target: u32) -> (bool, f64, u64, u64) {
@@ -1206,7 +1209,7 @@ fn get_current_capacity(ip_address: u32) -> f64 {
     match connected_miners_map.get(&ip_address) {
         Some((value, last_updated)) => {
             // check it hasn't been more than 30 minutes since receiving an update from this miner
-            if (Local::now() - *last_updated).num_seconds() < 1800 {
+            if (Local::now() - *last_updated).num_seconds() < CONF.miner_update_timeout.unwrap_or(1800) as i64 {
                 *value
             } else {
                 0f64
@@ -1217,27 +1220,33 @@ fn get_current_capacity(ip_address: u32) -> f64 {
 }
 
 fn update_connected_miners(endpoint: &str, data: crate::web::MiningHeaderData) {
-    if data.capacity >= 0f64 {
-        let mut ip_address = endpoint.to_string();
-        let mut port_index = 0;
-        let mut i = 0;
-        for c in ip_address.chars() {
-            if c == ':' {
-                port_index = i;
-                break;
-                }
-            i += 1;
+    let mut ip_address = endpoint.to_string();
+    let mut port_index = 0;
+    let mut i = 0;
+    for c in ip_address.chars() {
+        if c == ':' {
+            port_index = i;
+            break;
             }
-        if port_index > 0 {
-            ip_address.truncate(port_index);
+        i += 1;
         }
-        let ip_as_u32 = ip_to_u32(ip_address.as_str());
-        if get_current_capacity(ip_as_u32) != data.capacity / 1024f64 {
-            debug!("Storing capacity for IP \"{}\" as {}=>{} TiB", ip_address, ip_as_u32, data.capacity / 1024f64);
-        }
-        let mut connected_miners_map = CONNECTED_MINER_DATA.lock().unwrap();
-        connected_miners_map.insert(ip_as_u32, (data.capacity / 1024f64, Local::now()));
+    if port_index > 0 {
+        ip_address.truncate(port_index);
     }
+    let ip_as_u32 = ip_to_u32(ip_address.as_str());
+    let capacity_tib = data.capacity / 1024f64;
+    let stored_capacity = get_current_capacity(ip_as_u32);
+    let capacity_to_store;
+    if capacity_tib > 0f64 && capacity_tib != stored_capacity {
+        capacity_to_store = capacity_tib;
+    } else {
+        capacity_to_store = stored_capacity;
+    }
+    if capacity_tib != stored_capacity {
+        debug!("Storing capacity for IP \"{}\" as {}=>{} TiB", ip_address, ip_as_u32, capacity_to_store);
+    }
+    let mut connected_miners_map = CONNECTED_MINER_DATA.lock().unwrap();
+    connected_miners_map.insert(ip_as_u32, (capacity_to_store, Local::now()));
 }
 
 fn ip_to_u32(ip_address: &str) -> u32 {
