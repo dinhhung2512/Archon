@@ -800,7 +800,7 @@ fn print_block_started(
                 //prev_block_time_str.color(color).bold(),
                 border.color(color).bold(),
                 "Total Capacity:".color(color).bold(),
-                format!("{} TiB", get_total_plots_size_in_tebibytes()).color(color),
+                format!("{:.4} TiB", get_total_plots_size_in_tebibytes()).color(color),
                 "Base Target:".color(color).bold(),
                 base_target.to_string().color(color),
             )
