@@ -80,6 +80,9 @@ fn get_header_value(string_data: String) -> header::HeaderValue {
 }
 
 pub fn thread_arbitrate() {
+    // wait for a couple of seconds to try to let connected miners send their plot size first, to
+    // try to ensure dynamic deadlines etc are correct
+    std::thread::sleep(std::time::Duration::from_secs(3));
     let (mining_info_sender, mining_info_receiver) = std_mpsc::channel();
     // start polling for mining info for each chain
     for inner in &crate::CONF.poc_chains {
@@ -606,7 +609,11 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
     }
     let times_requeued = get_num_times_requeued(current_chain_index, requeued_height);
     if do_requeue && times_requeued < current_chain.maximum_requeue_times.unwrap_or(u8::max_value()) {
-        info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
+        if current_chain.maximum_requeue_times.is_none() {
+            info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
+        } else {
+            info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{} - Requeue #{} of {}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height, times_requeued + 1, current_chain.maximum_requeue_times.unwrap());
+        }
         // set the queue status for this chain back by 1, thereby "requeuing" it
         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
         chain_queue_status_map.insert(current_chain_index, (requeued_height - 1, requeued_time));
@@ -617,25 +624,25 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
         let mut chain_requeue_times_map = crate::CHAIN_REQUEUE_TIMES.lock().unwrap();
         chain_requeue_times_map.insert(current_chain_index, (requeued_height, times_requeued + 1));
         // print
-        super::print_block_requeued_or_interrupted(
+        /*super::print_block_requeued_or_interrupted(
             &*current_chain.name,
             &*current_chain.color,
             requeued_height,
             do_requeue,
             times_requeued,
             current_chain.maximum_requeue_times,
-        );
+        );*/
     } else {
         info!("INTERRUPT BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
         // print
-        super::print_block_requeued_or_interrupted(
+        /*super::print_block_requeued_or_interrupted(
             &*current_chain.name,
             &*current_chain.color,
             requeued_height,
             false,
             times_requeued,
             current_chain.maximum_requeue_times,
-        );
+        );*/
     }
 }
 
@@ -1024,21 +1031,43 @@ fn get_target_deadline(
     return (target_deadline, id_override);
 }
 
-fn forward_nonce_submission(chain_index: u8, url: &str, user_agent_header: &str) -> Option<String> {
+fn forward_nonce_submission(
+    chain_index: u8,
+    url: &str,
+    user_agent_header: &str,
+    mining_headers: crate::web::MiningHeaderData,
+    miner_name: Option<String>,
+    send_total_capacity: bool,
+) -> Option<String> {
     let chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
+    let version_str = format!("{} v{}", super::uppercase_first(super::APP_NAME), super::VERSION);
+    let hostname_os_str = gethostname::gethostname();
+    let hostname = hostname_os_str.to_str();
+    let submission_miner_name;
+    // X-MinerName = ChainConfig.miner_name > hostname > mining software user agent > Archon vx.x.x-pre
+    if miner_name.is_some() {
+        submission_miner_name = format!("{} via {}", user_agent_header, version_str.clone());
+    } else if hostname.is_some() {
+        submission_miner_name = format!("{} via {}", hostname.unwrap(), version_str.clone());
+    } else if mining_headers.miner_name.len() > 0 {
+        submission_miner_name = format!("{} via {}", mining_headers.miner_name, version_str.clone());
+    } else {
+        submission_miner_name = format!("{}", version_str.clone());
+    }
+    let capacity_to_send;
+    if send_total_capacity {
+        capacity_to_send = (super::get_total_plots_size_in_tebibytes() * 1024f64).to_string();
+    } else {
+        capacity_to_send = mining_headers.capacity.to_string();
+    }
     match chain_nonce_submission_clients.get(&chain_index) {
         Some(client) => {
             match client
                 .post(url)
-                .header(
-                    "User-Agent",
-                    format!(
-                        "{} via {} v{}",
-                        user_agent_header,
-                        super::uppercase_first(super::APP_NAME),
-                        super::VERSION
-                    ),
-                )
+                .header("User-Agent", format!("{} via {}", user_agent_header, version_str.clone()))
+                .header("X-Miner", format!("{} via {}", user_agent_header, version_str))
+                .header("X-Capacity", capacity_to_send)
+                .header("X-MinerName", submission_miner_name)
                 .send()
             {
                 Ok(mut response) => match &response.text() {
@@ -1069,6 +1098,7 @@ pub fn process_nonce_submission(
     user_agent_header: &str,
     adjusted: bool,
     remote_addr: String,
+    mining_headers: crate::web::MiningHeaderData,
 ) -> String {
     debug!("Received DL: Height={}, ID={}, Nonce={}, DL={:?}, Software={}, Adjusted={}, Address={}", block_height, account_id, nonce, deadline, user_agent_header, adjusted, remote_addr);
     // validate data
@@ -1238,7 +1268,8 @@ pub fn process_nonce_submission(
                         while attempts < 5 && !deadline_accepted && !deadline_rejected {
                             _deadline_sent = true;
                             info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
-                            match forward_nonce_submission(chain_index, url.as_str(), user_agent_header)
+                            let send_total_capacity = current_chain.is_hpool.unwrap_or_default();
+                            match forward_nonce_submission(chain_index, url.as_str(), user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), send_total_capacity)
                             {
                                 Some(text) => {
                                     debug!("DL Submit Response: {}", text);

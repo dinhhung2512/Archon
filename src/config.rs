@@ -125,18 +125,6 @@ pub struct Config {
     pub outage_status_update_interval: Option<u16>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_plots_size_in_tebibytes: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_plots_size_in_gibibytes: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_plots_size_in_terabytes: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_plots_size_in_gigabytes: Option<f64>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub show_human_readable_deadlines: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -207,14 +195,6 @@ usePocChainColors: true
 # Outage Status Update Interval: Optional. Interval (in seconds) in which to post logs about outages. Default = 300 seconds (5 minutes).
 #   The lower this number, the more error messages about outages you will see in the event of an outage.
 outageStatusUpdateInterval: 300
-
-# Total Plots Size In (Unit): These are used for calculating dynamic deadlines, and submitting your plot capacity to HDPool/HPool; Different units are provided only for convenience.
-# These options are all optional, if more than one is specified, they will be *ADDED TOGETHER*, so don't fill each one out with your total plots size! Eg: 10 TiB + 3 TB + 1024 GiB + 8000 GB = 21.0044417195022106170654296875 TiB
-# IF YOU ARE MINING VIA HPOOL OR HDPOOL, YOU MUST SPECIFY YOUR PLOT SIZE HERE! (At least until I implement automatically summing it up)
-totalPlotsSizeInTebibytes: 10    # 10 TiB
-#totalPlotsSizeInTerabytes: 3     # 3 TB (2.72 TiB)
-#totalPlotsSizeInGibibytes: 1024  # 1024 GiB (1 TiB)
-#totalPlotsSizeInGigabytes: 8000  # 8000 GB (7.27 TiB)
 
 # Show Human Readable Deadlines: Optional. If true, values displayed in seconds will be appended with a human readable value, for example: 3345951 (1m 8d 17:25:51)
 showHumanReadableDeadlines: true

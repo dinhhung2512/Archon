@@ -92,6 +92,14 @@ fn try_get_query_string_value(req: &HttpRequest, name: &str) -> (bool, String) {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct MiningHeaderData {
+    pub capacity: f64,
+    pub miner: String,
+    pub miner_name: String,
+    pub plot_file: String,
+}
+
 pub struct SubmitNonceInfo {
     pub block_height: Option<u32>,
     pub account_id: u64,
@@ -148,7 +156,7 @@ fn create_response(status_code: StatusCode, body: String) -> FutureResult<HttpRe
 }
 
 fn get_x_deadline_value(req: &HttpRequest) -> (bool, u64) {
-    match req.headers().get("X-Deadline") {
+    match req.headers().get("x-deadline") {
         Some(container) => {
             match container.to_str() {
                 Ok(value) => (true, parse_u64_from_str(value)),
@@ -159,32 +167,43 @@ fn get_x_deadline_value(req: &HttpRequest) -> (bool, u64) {
     }
 }
 
-fn get_miner_software(req: &HttpRequest) -> &str {
+fn get_miner_software(req: &HttpRequest) -> String {
     match req.headers().get(header::USER_AGENT) {
         Some(container) => {
             match container.to_str() {
-                Ok(value) => value.clone(),
-                _ => get_miner_software_alt(&req)
+                Ok(value) => value.clone().to_string(),
+                _ => get_header_value(req, "x-miner", "Unknown")
             }
         },
-        _ => get_miner_software_alt(&req)
+        _ => get_header_value(req, "x-miner", "Unknown")
     }
 }
 
-fn get_miner_software_alt(req: &HttpRequest) -> &str {
-    match req.headers().get("X-Miner") {
+fn get_all_mining_headers(req: &HttpRequest) -> MiningHeaderData {
+    MiningHeaderData { 
+        miner: get_header_value(req, "x-miner", ""),
+        miner_name: get_header_value(req, "x-minername", ""),
+        capacity: str::parse::<f64>(get_header_value(req, "x-capacity", "").as_str()).unwrap_or(0f64),
+        plot_file: get_header_value(req, "x-plotfile", "")
+    }
+}
+
+fn get_header_value(req: &HttpRequest, name: &str, default_value: &str) -> String {
+    match req.headers().get(name) {
         Some(container) => {
             match container.to_str() {
-                Ok(value) => value.clone(),
-                _ => "Unknown"
+                Ok(value) => value.clone().to_string(),
+                _ => default_value.to_string(),
             }
         },
-        _ => "Unknown"
+        _ => default_value.to_string(),
     }
 }
 
 fn handle_get_mining_info(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
     trace!("GetMiningInfo Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
+    let mining_header_data = get_all_mining_headers(req);
+    super::update_connected_miners(req.connection_info().remote().unwrap_or(""), mining_header_data);
     create_response(StatusCode::OK, super::get_current_mining_info_json())
 }
 
@@ -192,6 +211,8 @@ fn handle_submit_nonce(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
     trace!("SubmitNonce Request from [{}] (Method: {})", req.connection_info().remote().unwrap_or("Unknown"), req.method().to_string());
     match *req.method() {
         Method::POST => {
+            let mining_header_data = get_all_mining_headers(req);
+            super::update_connected_miners(req.connection_info().remote().unwrap_or(""), mining_header_data.clone());
             match try_get_submit_nonce_data(req) {
                 Some(submit_nonce_data) => {
                     let miner_software = get_miner_software(&req);
@@ -211,9 +232,10 @@ fn handle_submit_nonce(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
                             submit_nonce_data.account_id,
                             submit_nonce_data.nonce,
                             deadline,
-                            miner_software,
+                            miner_software.as_str(),
                             is_adjusted,
                             req.connection_info().remote().unwrap_or("").to_string(),
+                            mining_header_data,
                         )
                     )
                 },
@@ -289,10 +311,6 @@ fn handle_api_get_config(req: &HttpRequest) -> FutureResult<HttpResponse, Error>
                 use_poc_chain_colors: crate::CONF.use_poc_chain_colors,
                 poc_chains: Some(Vec::new()),
                 outage_status_update_interval: crate::CONF.outage_status_update_interval,
-                total_plots_size_in_tebibytes: crate::CONF.total_plots_size_in_tebibytes,
-                total_plots_size_in_terabytes: crate::CONF.total_plots_size_in_terabytes,
-                total_plots_size_in_gibibytes: crate::CONF.total_plots_size_in_gibibytes,
-                total_plots_size_in_gigabytes: crate::CONF.total_plots_size_in_gigabytes,
                 show_human_readable_deadlines: crate::CONF.show_human_readable_deadlines,
                 mask_account_ids_in_console: crate::CONF.mask_account_ids_in_console,
                 use_24_hour_time: crate::CONF.use_24_hour_time,

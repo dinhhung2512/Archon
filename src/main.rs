@@ -67,6 +67,10 @@ lazy_static! {
         let chain_requeue_times_map = HashMap::new();
         Arc::new(Mutex::new(chain_requeue_times_map))
     };
+    static ref CONNECTED_MINER_DATA: Arc<Mutex<HashMap<u32, (f64, DateTime<Local>)>>> = {
+        let connected_miner_data = HashMap::new();
+        Arc::new(Mutex::new(connected_miner_data))
+    };
     #[derive(Serialize)]
     pub static ref CONF: Config = {
         let c: Config = match File::open("archon.yaml").map(|file| {
@@ -199,22 +203,6 @@ fn main() {
             format!("{} {}",
                 "Grace Period:".green(),
                 format!("{} seconds", crate::CONF.grace_period).yellow()
-            )
-        );
-        let total_plots_size_tebibytes = get_total_plots_size_in_tebibytes();
-        let plots_zero_warning;
-        if total_plots_size_tebibytes == 0f64 {
-            plots_zero_warning = " (Warning: Dynamic deadlines require an accurate plot size. Dynamic Deadlines are disabled.)";
-        } else {
-            plots_zero_warning = "";
-        }
-        println!("  {} {} {}",
-            get_time().white(),
-            "Config:".red(),
-            format!("{} {}{}",
-                "Total Plots Size:".green(),
-                format!("{} TiB", total_plots_size_tebibytes).yellow(),
-                plots_zero_warning.red(),
             )
         );
         println!("  {} {} {}",
@@ -754,62 +742,6 @@ fn query_create_default_config() {
     };
 }
 
-fn print_block_requeued_or_interrupted(
-    chain_name: &str,
-    chain_color: &str,
-    height: u32,
-    requeued: bool,
-    times_requeued: u8,
-    max_requeues: Option<u8>,
-) {
-    let border = String::from("------------------------------------------------------------------------------------------");
-    let color = get_color(chain_color);
-    if requeued {
-        let requeue_times_str = match max_requeues {
-            Some(max) => format!(" (#{} of {})", times_requeued + 1, max),
-            _ => String::from("")
-        };
-        println!("{}\n  {} {} => {} | {}{}\n{}",
-            border.yellow(),
-            format!("{}", get_time()).white(),
-            "INTERRUPTED & REQUEUED BLOCK".color(color),
-            format!("{}", chain_name).color(color),
-            format!("#{}", height).color(color),
-            requeue_times_str.color(color),
-            border.yellow(),
-        );
-    } else {
-        println!("{}\n  {} {} => {} | {}\n{}",
-            border.red(),
-            format!("{}", get_time()).white(),
-            "INTERRUPTED BLOCK".red(),
-            format!("{}", chain_name).color(color),
-            format!("#{}", height).color(color),
-            border.red(),
-        );
-    }
-}
-
-/*fn print_block_queued(chain_name: &str, chain_color: &str, height: u32) {
-    if CONF.show_block_queued_messages.unwrap_or(true) {
-        let mut queued_block_message = String::from("");
-        let border = String::from("------------------------------------------------------------------------------------------");
-        let color = get_color(chain_color);
-        queued_block_message.push_str(
-            format!(
-                "{}\n  {} {} => {} | {}\n{}",
-                border.color(color).bold(),
-                format!("{}", get_time()).white(),
-                "  QUEUED BLOCK".color(color),
-                format!("{}", chain_name).color(color),
-                format!("#{}", height).color(color),
-                border.color(color).bold()
-            )
-            .as_str(),
-        );
-        println!("{}", queued_block_message);
-    }
-}*/
 
 fn print_block_started(
     chain_index: u8,
@@ -858,7 +790,7 @@ fn print_block_started(
             prev_block_time_str = String::from("");
         }*/
         new_block_message.push_str(
-            format!("{}{}\n  {} {} => {} | {}\n{}\n  {}          {}\n",
+            format!("{}{}\n  {} {} => {} | {}\n{}\n  {}       {}\n  {}          {}\n",
                 last_block_time_str.yellow(),
                 border.color(color).bold(),
                 format!("{}", get_time()).white(),
@@ -867,6 +799,8 @@ fn print_block_started(
                 format!("#{}", height).color(color),
                 //prev_block_time_str.color(color).bold(),
                 border.color(color).bold(),
+                "Total Capacity:".color(color).bold(),
+                format!("{} TiB", get_total_plots_size_in_tebibytes()).color(color),
                 "Base Target:".color(color).bold(),
                 base_target.to_string().color(color),
             )
@@ -912,9 +846,6 @@ fn print_block_started(
                             actual_target_deadline,
                             human_readable_target_deadline,
                             dynamic_target_deadline_warning,
-                            /*target_deadline,
-                            chain_tdl,
-                            dynamic_target_deadline,*/
                         )
                         .color(color)
                     )
@@ -933,11 +864,7 @@ fn print_block_started(
                     new_block_message.push_str(
                         format!("  {}   {}\n",
                             "Network Difficulty:".color(color).bold(),
-                            format!(
-                                "{} TiB (Proper for BHD = {} TiB)",
-                                net_difficulty, bhd_net_diff
-                            )
-                            .color(color)
+                            format!("{} TiB (Proper for BHD = {} TiB)", net_difficulty, bhd_net_diff).color(color)
                         )
                         .as_str(),
                     );
@@ -955,8 +882,6 @@ fn print_block_started(
                         format!("{}{}", // (Upstream: {} | Config: {})",
                             actual_target_deadline,
                             human_readable_target_deadline,
-                            /*target_deadline,
-                            chain_tdl,*/
                         )
                         .color(color)
                     )
@@ -975,11 +900,7 @@ fn print_block_started(
                     new_block_message.push_str(
                         format!("  {}   {}\n",
                             "Network Difficulty:".color(color).bold(),
-                            format!(
-                                "{} TiB (Proper for BHD = {} TiB)",
-                                net_difficulty, bhd_net_diff
-                            )
-                            .color(color)
+                            format!("{} TiB (Proper for BHD = {} TiB)", net_difficulty, bhd_net_diff).color(color)
                         )
                         .as_str(),
                     );
@@ -999,39 +920,6 @@ fn print_block_started(
         block_start_printed_map.insert(chain_index, height);
         println!("{}", new_block_message);
     }
-}
-
-#[allow(dead_code)]
-fn print_nonce_skipped(
-    index: u8,
-    height: u32,
-    account_id: u64,
-    deadline: u64,
-    user_agent: &str,
-    target_deadline: u64,
-) {
-    let current_chain = get_chain_from_index(index).unwrap();
-    let color = get_color(&*current_chain.color);
-    let mut deadline_string = deadline.to_string();
-    if crate::CONF.show_human_readable_deadlines.unwrap_or_default()
-    {
-        deadline_string.push_str(format!(" ({})", format_timespan(deadline)).as_str());
-    }
-    let deadline_color = match deadline {
-        0...3600 => "green",
-        3601...86400 => "yellow",
-        _ => "white",
-    };
-    println!("    {} ==> {}{} ==> {} {}{}\n        {}                           {}",
-        user_agent.to_string().color(color).bold(),
-        "Block #".color(color).bold(),
-        height.to_string().color(color),
-        "Numeric ID:".color(color).bold(),
-        censor_account_id(account_id).color(color),
-        format!(" [TDL: {}]", target_deadline).red(),
-        "Skipped:".yellow(),
-        deadline_string.color(deadline_color),
-    );
 }
 
 fn print_nonce_submission(
@@ -1178,52 +1066,18 @@ fn get_network_difficulty_for_block(base_target: u32, block_time_seconds: u16) -
 }
 
 fn get_total_plots_size_in_tebibytes() -> f64 {
-    // sum up plot size vars from config
-    let mut plot_size_tebibytes = 0f64;
-    // calculate conversion multipliers
-
-    // decimal to binary first
-    // 1,000,000,000 / 1,099,511,627,776 = 0.0009094947017729282379150390625
-    let gb_to_tib_multiplier = 10f64.powi(9) / 2f64.powi(40);
-    // Proof: For an 8TB (8000 GB) Drive: 8000 * (10^9/2^40) = 7.2759576141834259033203125 TiB
-
-    // 1,000,000,000,000 / 1,099,511,627,776 = 0.9094947017729282379150390625 (or gb_to_tib_multiplier / 1000 :P )
-    let tb_to_tib_multiplier = 10f64.powi(12) / 2f64.powi(40);
-    // Proof: For an 8TB Drive: 8 * (10^12/2^40) = 7.2759576141834259033203125 TiB
-
-    // binary to binary
-    // 1,073,741,824 / 1,099,511,627,776 = 0.0009765625
-    let gib_to_tib_multiplier = 2f64.powi(30) / 2f64.powi(40);
-    // Proof: 1024 GiB: 1024 * (2^30/2^40) = 1.000 TiB
-
-    match crate::CONF.total_plots_size_in_gigabytes {
-        Some(size_gb) => {
-            plot_size_tebibytes += size_gb * gb_to_tib_multiplier;
+    let connected_miners_map = CONNECTED_MINER_DATA.lock().unwrap();
+    let mut plots_capacity = 0f64;
+    let current_time = Local::now();
+    for (val, last_updated) in connected_miners_map.values() {
+        // check that it hasn't been more than 30 minutes since this miner connected
+        if (current_time - *last_updated).num_seconds() < 1800 {
+            plots_capacity += *val;
         }
-        _ => {}
     }
-    match crate::CONF.total_plots_size_in_terabytes {
-        Some(size_tb) => {
-            plot_size_tebibytes += size_tb * tb_to_tib_multiplier;
-        }
-        _ => {}
-    }
-    match crate::CONF.total_plots_size_in_gibibytes {
-        Some(size_gib) => {
-            plot_size_tebibytes += size_gib * gib_to_tib_multiplier; // can just do size_gib/1024 to get GiB => TiB, but this way is cooler... :D
-        }
-        _ => {}
-    }
-    match crate::CONF.total_plots_size_in_tebibytes {
-        Some(size_tib) => {
-            plot_size_tebibytes += size_tib;
-        }
-        _ => {}
-    }
-    return plot_size_tebibytes;
+    plots_capacity
 }
 
-#[allow(dead_code)]
 fn get_dynamic_deadline_for_block(base_target: u32) -> (bool, f64, u64, u64) {
     let chain_index = arbiter::get_current_chain_index();
     let current_chain = get_chain_from_index(chain_index).unwrap();
@@ -1274,20 +1128,6 @@ fn get_chain_index(chain_url: &str, chain_name: &str) -> u8 {
         }
     }
     return 0;
-}
-
-#[allow(dead_code)]
-fn get_mining_info_for_chain(chain_url: &str, chain_name: &str) -> (MiningInfo, DateTime<Local>) {
-    let index = get_chain_index(chain_url, chain_name);
-    let chain_map = crate::CHAIN_MINING_INFOS.lock().unwrap();
-    match chain_map.get(&index) {
-        Some((mining_info, time)) => {
-            return (mining_info.clone(), time.clone());
-        }
-        None => {
-            return (MiningInfo::empty(), Local::now());
-        }
-    }
 }
 
 fn format_timespan(timespan: u64) -> String {
@@ -1357,4 +1197,52 @@ fn pad_left(num: u64, desired_length: usize) -> String {
         padded = format!("0{}", padded);
     }
     return padded;
+}
+
+#[allow(dead_code)]
+fn get_current_capacity(ip_address: u32) -> f64 {
+    // lookup value in the map
+    let connected_miners_map = CONNECTED_MINER_DATA.lock().unwrap();
+    match connected_miners_map.get(&ip_address) {
+        Some((value, last_updated)) => {
+            // check it hasn't been more than 30 minutes since receiving an update from this miner
+            if (Local::now() - *last_updated).num_seconds() < 1800 {
+                *value
+            } else {
+                0f64
+            }
+        },
+        None => 0f64
+    }
+}
+
+fn update_connected_miners(endpoint: &str, data: crate::web::MiningHeaderData) {
+    if data.capacity >= 0f64 {
+        let mut ip_address = endpoint.to_string();
+        let mut port_index = 0;
+        let mut i = 0;
+        for c in ip_address.chars() {
+            if c == ':' {
+                port_index = i;
+                break;
+                }
+            i += 1;
+            }
+        if port_index > 0 {
+            ip_address.truncate(port_index);
+        }
+        let ip_as_u32 = ip_to_u32(ip_address.as_str());
+        if get_current_capacity(ip_as_u32) != data.capacity / 1024f64 {
+            debug!("Storing capacity for IP \"{}\" as {}=>{} TiB", ip_address, ip_as_u32, data.capacity / 1024f64);
+        }
+        let mut connected_miners_map = CONNECTED_MINER_DATA.lock().unwrap();
+        connected_miners_map.insert(ip_as_u32, (data.capacity / 1024f64, Local::now()));
+    }
+}
+
+fn ip_to_u32(ip_address: &str) -> u32 {
+    match ipaddress::IPAddress::split_to_u32(&ip_address.to_string()) {
+        Ok(ip_as_u32) => ip_as_u32,
+        _ => 0u32
+    }
 }

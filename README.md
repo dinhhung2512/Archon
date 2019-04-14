@@ -60,7 +60,6 @@ Your PoC chains are defined in the `archon.yaml` configuration file, [see below]
 Note: You must have at least one PoC Chain defined, or Archon will have nothing to do!
 
 Example chain layouts for different purposes, using the bare minimum information required by Archon:
-**NOTE: For mining via HPool or HDPool - you must specify your plot size using the `totalPlotsSizeIn___` config options - Archon will submit these to the pool which will then use them to calculate your shares.** *This is a temporary solution, until automatic summing up of your plot capacity from mining submissions is implemented.*
 ```yaml
 pocChains:
 # BHD via HDProxy
@@ -193,7 +192,7 @@ numericIdToTargetDeadline:
   - Specify the interval, in seconds, that Archon will request mining info for this chain. Minimum is 1 second.
 - `useDynamicDeadlines`
   - Optional. Default = false
-  - If set to true, and you have specified a total plot size in your Archon configuration, Archon will calculate your target deadline dynamically for each block, for this chain only.
+  - If set to true, Archon will calculate your target deadline dynamically for each block, for this chain only.
 - `allowLowerBlockHeights`
   - Optional. Default = false
   - If set to true, Archon will change its new-block-detection method from "block height greater than previous" to "block height not equal to previous" for this chain only, which will consequently allow a lower block height to be mined in the same chain.
@@ -235,14 +234,7 @@ Use these configuration options to control Archon's behavior.
   - If disabled, most of the printing will be in white.
 - `outageStatusUpdateInterval`
   - Optional. Default = 300 seconds / 5 minutes
-  - This just avoids spamming the console with errors in the event of an outage. It's effectively a cooldown; Archon will only print an error message / status update about the outage when this period of time has elapsed since it printed the last error message / status update.
-- `totalPlotsSizeInTebibytes` *(1 TiB = 2^40 bytes)*
-- `totalPlotsSizeInTerabytes` *(1 TB = 10^12 bytes)*
-- `totalPlotsSizeInGibibytes` *(1 GiB = 2^30 bytes)*
-- `totalPlotsSizeInGigabytes` *(1 GB = 10^9 bytes)*
-  - These are all optional, the only reason there are 4 of them is for convenience, so you don't have to convert units. Just fill in whichever one you know. **NOTE:** *If you decide to fill in more than one of these, Archon will __add them together__ to calculate a total.*
-  - These values are used for calculating dynamic deadlines. If you don't have any specified, dynamic deadlines will be disabled automatically.
-  - Archon will also use these values for reporting your capacity to HDPool & HPool to be used for calculating your shares distribution. **WARNING:** *Overstating your capacity (aka cheating) is likely to get your account banned and your funds forfeited. Be fair to other miners and be honest, it's in everyone's best interests! This is a temporary solution until automatic plot capacity calculation can be implemented.*
+  - This just avoids spamming the console with errors in the event of an outage.
 - `showHumanReadableDeadlines`
   - Optional. Default = false
   - Appends a human readable time to deadlines and other durations. Eg: 3345951 **(1m 8d 17:25:51)**
@@ -336,14 +328,6 @@ usePocChainColors: true
 # Outage Status Update Interval: Optional. Interval (in seconds) in which to post logs about outages. Default = 300 seconds (5 minutes).
 #   The lower this number, the more error messages about outages you will see in the event of an outage.
 outageStatusUpdateInterval: 300
-
-# Total Plots Size In (Unit): These are used for calculating dynamic deadlines, and submitting your plot capacity to HDPool/HPool; Different units are provided only for convenience.
-# These options are all optional, if more than one is specified, they will be *ADDED TOGETHER*, so don't fill each one out with your total plots size! Eg: 10 TiB + 3 TB + 1024 GiB + 8000 GB = 21.0044417195022106170654296875 TiB
-# IF YOU ARE MINING VIA HPOOL OR HDPOOL, YOU MUST SPECIFY YOUR PLOT SIZE HERE! (At least until I implement automatically summing it up)
-totalPlotsSizeInTebibytes: 10    # 10 TiB
-#totalPlotsSizeInTerabytes: 3     # 3 TB (2.72 TiB)
-#totalPlotsSizeInGibibytes: 1024  # 1024 GiB (1 TiB)
-#totalPlotsSizeInGigabytes: 8000  # 8000 GB (7.27 TiB)
 
 # Show Human Readable Deadlines: Optional. If true, values displayed in seconds will be appended with a human readable value, for example: 3345951 (1m 8d 17:25:51)
 showHumanReadableDeadlines: true
