@@ -34,6 +34,23 @@ use arbiter::HDPoolSubmitNonceInfo;
 const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
+#[derive(Debug)]
+enum TargetDeadlineType {
+    PoolMaximum(u64),
+    ConfigChainLevel(u64),
+    ConfigOverriddenByID(u64),
+    Dynamic(u64),
+    Default,
+}
+
+#[derive(Debug)]
+enum LastBlockInfo {
+    Requeued(Option<(u8, u8)>, u64, u8),
+    Superseded(u64, u8),
+    Completed(u64, u8),
+    Interrupted(u64, u8),
+}
+
 lazy_static! {
     static ref CHAIN_MINING_INFOS: Arc<Mutex<HashMap<u8, (MiningInfo, DateTime<Local>)>>> = {
         let chain_mining_infos = HashMap::new();
@@ -67,7 +84,7 @@ lazy_static! {
         let chain_requeue_times_map = HashMap::new();
         Arc::new(Mutex::new(chain_requeue_times_map))
     };
-    static ref CONNECTED_MINER_DATA: Arc<Mutex<HashMap<u32, (f64, DateTime<Local>)>>> = {
+    static ref CONNECTED_MINER_DATA: Arc<Mutex<HashMap<u32, (f64, String, DateTime<Local>)>>> = {
         let connected_miner_data = HashMap::new();
         Arc::new(Mutex::new(connected_miner_data))
     };
@@ -432,12 +449,17 @@ fn main() {
         let version_check_thread = thread::spawn(move || {
             thread_check_latest_githib_version();
         });
+        // start capacity monitoring thread
+        let capacity_monitor_thread = thread::spawn(move || {
+            thread_monitor_capacity();
+        });
 
         println!("  {} {}", get_time().white(), "Starting web server.".green() );
         web::start_server();
         mi_thread.join().expect("Failed to join mining info thread.");
         queue_proc_thread.join().expect("Failed to join queue processing thread.");
         version_check_thread.join().expect("Failed to join version check thread.");
+        capacity_monitor_thread.join().expect("Failed to join capacity monitor thread.");
     } else {
         println!("  {} {} {}", get_time().white(), "ERROR".red().underline(), "You do not have any PoC Chains configured. Archon has nothing to do!".yellow());
     }
@@ -748,33 +770,72 @@ fn print_block_started(
     height: u32,
     base_target: u32,
     gen_sig: String,
-    target_deadline: u64,
-    last_block_time: u64,
+    last_block_info: Option<LastBlockInfo>,
 ) {
     if !is_block_start_printed(chain_index, height) {
         let current_chain = get_chain_from_index(chain_index).unwrap();
         let mut new_block_message = String::from("");
         let border = String::from("------------------------------------------------------------------------------------------");
+        let border2 = String::from("==========================================================================================");
         let color = get_color(&*current_chain.color);
         let last_block_time_str;
-        if last_block_time > 0 {
-            let human_time;
-            if CONF.show_human_readable_deadlines.unwrap_or(true) {
-                human_time = format!(" ({})", format_timespan(last_block_time));
-            } else {
-                human_time = String::from("");
-            }
-            let plural = match last_block_time {
-                1 => "",
-                _ => "s",
-            };
-            last_block_time_str = format!(
-                "{}\n  Block finished in {} second{}{}\n",
-                border, last_block_time, plural, human_time
-            );
-        } else {
-            last_block_time_str = String::from("")
-        }
+        let last_block_chain_color;
+        match last_block_info {
+            Some(LastBlockInfo::Completed(last_block_time, prev_block_chain_index)) => {
+                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                last_block_chain_color = prev_chain.color;
+                if last_block_time > 0 {
+                    let human_time;
+                    if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
+                    let plural = match last_block_time { 1 => "", _ => "s", }; 
+                    last_block_time_str = format!("{}\n  Block completed after {} second{}{}\n", border2, last_block_time, plural, human_time);
+                } else {
+                    last_block_time_str = String::from("")
+                }
+            },
+            Some(LastBlockInfo::Interrupted(last_block_time, prev_block_chain_index)) => {
+                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                last_block_chain_color = prev_chain.color;
+                let human_time;
+                if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
+                let plural = match last_block_time { 1 => "", _ => "s", };
+                last_block_time_str = format!("{}\n  Block interrupted after {} second{}{}\n", border2, last_block_time, plural, human_time);
+            },
+            Some(LastBlockInfo::Requeued(requeue_info, last_block_time, prev_block_chain_index)) => {
+                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                last_block_chain_color = prev_chain.color;
+                match requeue_info {
+                    Some((num_times, max_times)) => {
+                        let human_time;
+                        if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
+                        let plural = match last_block_time { 1 => "", _ => "s", };
+                        last_block_time_str = format!("{}\n  Block requeued (#{}/{}) after {} second{}{}\n", border2, num_times + 1, max_times, last_block_time, plural, human_time);
+                    },
+                    _ => {
+                        if last_block_time > 0 {
+                            let human_time;
+                            if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
+                            let plural = match last_block_time { 1 => "", _ => "s", }; 
+                            last_block_time_str = format!("{}\n  Block requeued after {} second{}{}\n", border2, last_block_time, plural, human_time);
+                        } else {
+                            last_block_time_str = String::from("")
+                        }
+                    }
+                }
+            },
+            Some(LastBlockInfo::Superseded(last_block_time, prev_block_chain_index)) => {
+                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                last_block_chain_color = prev_chain.color;
+                let human_time;
+                if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
+                let plural = match last_block_time { 1 => "", _ => "s", }; 
+                last_block_time_str = format!("{}\n  Block superseded after {} second{}{}\n", border2, last_block_time, plural, human_time);
+            },
+            _ => {
+                last_block_time_str = String::from("");
+                last_block_chain_color = current_chain.color.to_string();
+            },
+        };
         /*let mut prev_block_time = 0;
         if height > 0 {
             prev_block_time = arbiter::get_time_since_block_start(height - 1).unwrap_or(0);
@@ -791,7 +852,7 @@ fn print_block_started(
         }*/
         new_block_message.push_str(
             format!("{}{}\n  {} {} => {} | {}\n{}\n  {}       {}\n  {}          {}\n",
-                last_block_time_str.yellow(),
+                last_block_time_str.color(last_block_chain_color).bold(),
                 border.color(color).bold(),
                 format!("{}", get_time()).white(),
                 " STARTED BLOCK".color(color),
@@ -803,117 +864,77 @@ fn print_block_started(
                 format!("{:.4} TiB", get_total_plots_size_in_tebibytes()).color(color),
                 "Base Target:".color(color).bold(),
                 base_target.to_string().color(color),
-            )
-            .as_str(),
+            ).as_str(),
         );
-        let mut actual_target_deadline = target_deadline;
-        if actual_target_deadline == 0 {
-            actual_target_deadline = u64::max_value();
-        }
-        if current_chain.target_deadline.is_some() {
-            actual_target_deadline = current_chain.target_deadline.unwrap()
-        }
         let mut human_readable_target_deadline = String::from("");
         let is_bhd = current_chain.is_bhd.unwrap_or_default() || current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hpool.unwrap_or_default();
-        match get_dynamic_deadline_for_block(base_target) {
-            (true, _, net_difficulty, dynamic_target_deadline) => {
-                let mut dynamic_target_deadline_warning = String::from("");
-                if dynamic_target_deadline < actual_target_deadline {
-                    actual_target_deadline = dynamic_target_deadline;
-                } else {
-                    dynamic_target_deadline_warning =
-                        format!(" [Dyn > Max Target! - {}]", dynamic_target_deadline);
-                }
-                if crate::CONF
-                    .show_human_readable_deadlines
-                    .unwrap_or_default()
-                {
-                    human_readable_target_deadline =
-                        format!(" ({})", format_timespan(actual_target_deadline));
-                    if dynamic_target_deadline_warning.len() > 0 {
-                        dynamic_target_deadline_warning
-                            .truncate(dynamic_target_deadline_warning.len() - 1);
-                        dynamic_target_deadline_warning.push_str(
-                            format!(" ({})]", format_timespan(dynamic_target_deadline)).as_str(),
-                        );
-                    }
+        match get_target_deadline(None, base_target, chain_index, current_chain.clone()) {
+            TargetDeadlineType::ConfigChainLevel(chain_tdl) => {
+                if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
+                    human_readable_target_deadline = format!(" ({})", format_timespan(chain_tdl));
                 }
                 new_block_message.push_str(
                     format!("  {}      {}\n",
                         "Target Deadline:".color(color).bold(),
-                        format!(
-                            "{}{}{}", // (Upstream: {} | Config: {} | Dynamic: {})",
-                            actual_target_deadline,
-                            human_readable_target_deadline,
-                            dynamic_target_deadline_warning,
-                        )
-                        .color(color)
-                    )
-                    .as_str(),
+                        format!("{}{} (Chain Config)", chain_tdl, human_readable_target_deadline).color(color),
+                    ).as_str(),
                 );
-                if !is_bhd {
-                    new_block_message.push_str(
-                        format!("  {}   {}\n",
-                            "Network Difficulty:".color(color).bold(),
-                            format!("{} TiB", net_difficulty).color(color)
-                        )
-                        .as_str(),
-                    );
-                } else {
-                    let bhd_net_diff = get_network_difficulty_for_block(base_target, 300);
-                    new_block_message.push_str(
-                        format!("  {}   {}\n",
-                            "Network Difficulty:".color(color).bold(),
-                            format!("{} TiB (Proper for BHD = {} TiB)", net_difficulty, bhd_net_diff).color(color)
-                        )
-                        .as_str(),
-                    );
-                }
-            }
-            (false, _, net_difficulty, _) => {
+            },
+            TargetDeadlineType::Default => {
+                new_block_message.push_str(
+                    format!("  {}      {}\n",
+                        "Target Deadline:".color(color).bold(),
+                        "None".color(color)
+                    ).as_str(),
+                );
+            },
+            TargetDeadlineType::Dynamic(dynamic_tdl) => {
                 if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
-                    human_readable_target_deadline =
-                        format!(" ({})", format_timespan(actual_target_deadline));
+                    human_readable_target_deadline = format!(" ({})", format_timespan(dynamic_tdl));
                 }
                 new_block_message.push_str(
-                    format!(
-                        "  {}      {}\n",
+                    format!("  {}      {}\n",
                         "Target Deadline:".color(color).bold(),
-                        format!("{}{}", // (Upstream: {} | Config: {})",
-                            actual_target_deadline,
-                            human_readable_target_deadline,
-                        )
-                        .color(color)
-                    )
-                    .as_str(),
+                        format!("{}{} (Dynamic @ {}%)", dynamic_tdl, human_readable_target_deadline, current_chain.submit_probability.unwrap_or(95.0f64)).color(color),
+                    ).as_str(),
                 );
-                if !is_bhd {
-                    new_block_message.push_str(
-                        format!("  {}   {}\n",
-                            "Network Difficulty:".color(color).bold(),
-                            format!("{} TiB", net_difficulty).color(color)
-                        )
-                        .as_str(),
-                    );
-                } else {
-                    let bhd_net_diff = get_network_difficulty_for_block(base_target, 300);
-                    new_block_message.push_str(
-                        format!("  {}   {}\n",
-                            "Network Difficulty:".color(color).bold(),
-                            format!("{} TiB (Proper for BHD = {} TiB)", net_difficulty, bhd_net_diff).color(color)
-                        )
-                        .as_str(),
-                    );
+            },
+            TargetDeadlineType::PoolMaximum(pool_tdl) => {
+                if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
+                    human_readable_target_deadline = format!(" ({})", format_timespan(pool_tdl));
                 }
-            }
+                new_block_message.push_str(
+                    format!("  {}      {}\n",
+                        "Target Deadline:".color(color).bold(),
+                        format!("{}{} (Pool Maximum)", pool_tdl, human_readable_target_deadline).color(color)
+                    ).as_str(),
+                );
+            },
+            _ => {} // no point having a match for TargetDeadlineType::ConfigOverriddenByID(base_tdl, id, override_tdl), since we don't provide an ID to get_target_deadline
         };
+        let net_difficulty = get_network_difficulty_for_block(base_target, 240);
+        if !is_bhd {
+            new_block_message.push_str(
+                format!("  {}   {}\n",
+                    "Network Difficulty:".color(color).bold(),
+                    format!("{} TiB", net_difficulty).color(color)
+                ).as_str(),
+            );
+        } else {
+            let bhd_net_diff = get_network_difficulty_for_block(base_target, 300);
+            new_block_message.push_str(
+                format!("  {}   {}\n",
+                    "Network Difficulty:".color(color).bold(),
+                    format!("{} TiB (Proper for BHD = {} TiB)", net_difficulty, bhd_net_diff).color(color)
+                ).as_str(),
+            );
+        }
         new_block_message.push_str(
             format!("  {} {}\n{}",
                 "Generation Signature:".color(color).bold(),
                 gen_sig.color(color),
                 border.color(color).bold()
-            )
-            .as_str(),
+            ).as_str(),
         );
         trace!("SET BLOCK START PRINTED {} #{}", chain_index, height);
         let mut block_start_printed_map = BLOCK_START_PRINTED.lock().unwrap();
@@ -1069,29 +1090,84 @@ fn get_total_plots_size_in_tebibytes() -> f64 {
     let connected_miners_map = CONNECTED_MINER_DATA.lock().unwrap();
     let mut plots_capacity = 0f64;
     let current_time = Local::now();
-    for (val, last_updated) in connected_miners_map.values() {
+    for (val, _, last_updated) in connected_miners_map.values() {
         if (current_time - *last_updated).num_seconds() < CONF.miner_update_timeout.unwrap_or(1800) as i64 {
             plots_capacity += *val;
         }
     }
-    if plots_capacity == 0f64 && CONF.initial_plot_capacity.is_some() {
-        CONF.initial_plot_capacity.unwrap()
-    } else {
-        plots_capacity
-    }
+    plots_capacity
 }
 
-fn get_dynamic_deadline_for_block(base_target: u32) -> (bool, f64, u64, u64) {
+fn get_target_deadline(
+    account_id: Option<u64>,
+    base_target: u32,
+    chain_index: u8,
+    chain: PocChain,
+) -> TargetDeadlineType {
+    // get max deadline from upstream if present
+    let tdl_last_value;
+    let upstream_target_deadline;
+    let mut target_deadline = match arbiter::get_current_chain_mining_info(chain_index) {
+        Some((mining_info, _)) => {
+            if mining_info.target_deadline == 0 || mining_info.target_deadline == u64::max_value() {
+                tdl_last_value = u64::max_value();
+                TargetDeadlineType::Default
+            } else {
+                tdl_last_value = mining_info.target_deadline;
+                TargetDeadlineType::PoolMaximum(tdl_last_value)
+            }
+        },
+        _ => {
+            tdl_last_value = u64::max_value();
+            TargetDeadlineType::Default
+        },
+    };
+    upstream_target_deadline = tdl_last_value;
+
+    // get chain's global target deadline, if set
+    if chain.target_deadline.is_some() {
+        target_deadline = TargetDeadlineType::ConfigChainLevel(chain.target_deadline.unwrap());
+    }
+
+    // calculate the dynamic deadline 
+    if chain.use_dynamic_deadlines.unwrap_or_default() {
+        let (_, dynamic_target_deadline) = get_dynamic_deadline_for_block(base_target);
+        if dynamic_target_deadline < upstream_target_deadline {
+            target_deadline = TargetDeadlineType::Dynamic(dynamic_target_deadline);
+        }
+    }
+
+    // check if there is a target deadline specified for this account id in this chain's config, if so, override all other deadlines with it
+    if account_id.is_some() {
+        match chain.numeric_id_to_target_deadline {
+            Some(num_id_to_tdls_map) => {
+                for (id, overridden_tdl) in num_id_to_tdls_map {
+                    if id == account_id.unwrap() && overridden_tdl < upstream_target_deadline {
+                        target_deadline = TargetDeadlineType::ConfigOverriddenByID(overridden_tdl);
+                    }
+                }
+            }
+            _ => {}
+        };
+    }
+    debug!("GetTDL(ID={:?}, BTgt={}, chInd={}) = {:?}", account_id, base_target, chain_index, target_deadline);
+    return target_deadline;
+}
+
+fn get_dynamic_deadline_for_block(base_target: u32) -> (u64, u64) {
     let chain_index = arbiter::get_current_chain_index();
     let current_chain = get_chain_from_index(chain_index).unwrap();
     let net_diff = get_network_difficulty_for_block(base_target, 240) as u64;
     let plot_size_tebibytes = get_total_plots_size_in_tebibytes();
     // are we using dynamic deadlines for this chain?
-    if current_chain.use_dynamic_deadlines.unwrap_or_default() && plot_size_tebibytes > 0f64 {
-        let dynamic_target_deadline = (720f64 * (net_diff as f64) / plot_size_tebibytes) as u64;
-        return (true, plot_size_tebibytes, net_diff, dynamic_target_deadline);
+    if plot_size_tebibytes > 0f64 {
+        let mut dynamic_target_deadline = (720f64 * (net_diff as f64) / plot_size_tebibytes) as u64;
+        if current_chain.submit_probability.unwrap_or(95f64) != 95f64 {
+            dynamic_target_deadline = ((dynamic_target_deadline / 95) as f64 * current_chain.submit_probability.unwrap_or(95f64)) as u64;
+        }
+        (net_diff, dynamic_target_deadline)
     } else {
-        return (false, 0f64, net_diff, 0u64);
+        (net_diff, u64::max_value())
     }
 }
 
@@ -1207,7 +1283,7 @@ fn get_current_capacity(ip_address: u32) -> f64 {
     // lookup value in the map
     let connected_miners_map = CONNECTED_MINER_DATA.lock().unwrap();
     match connected_miners_map.get(&ip_address) {
-        Some((value, last_updated)) => {
+        Some((value, _, last_updated)) => {
             // check it hasn't been more than 30 minutes since receiving an update from this miner
             if (Local::now() - *last_updated).num_seconds() < CONF.miner_update_timeout.unwrap_or(1800) as i64 {
                 *value
@@ -1242,16 +1318,84 @@ fn update_connected_miners(endpoint: &str, data: crate::web::MiningHeaderData) {
     } else {
         capacity_to_store = stored_capacity;
     }
-    if capacity_tib != stored_capacity {
-        debug!("Storing capacity for IP \"{}\" as {}=>{} TiB", ip_address, ip_as_u32, capacity_to_store);
+    if data.capacity > 0f64 && capacity_tib != stored_capacity {
+        debug!("Miner from IP {} capacity changed from {} TiB => {} TiB", ip_address, stored_capacity, capacity_tib);
     }
-    let mut connected_miners_map = CONNECTED_MINER_DATA.lock().unwrap();
-    connected_miners_map.insert(ip_as_u32, (capacity_to_store, Local::now()));
+    let mut connected_miners_map_guard = CONNECTED_MINER_DATA.lock().unwrap();
+    connected_miners_map_guard.insert(ip_as_u32, (capacity_to_store, ip_address, Local::now()));
 }
 
 fn ip_to_u32(ip_address: &str) -> u32 {
     match ipaddress::IPAddress::split_to_u32(&ip_address.to_string()) {
         Ok(ip_as_u32) => ip_as_u32,
         _ => 0u32
+    }
+}
+
+fn thread_monitor_capacity() {
+    let mut last_plot_capacity = get_total_plots_size_in_tebibytes();
+    let mut last_timeout_check = Local::now();
+    let border = "==========================================================================================";
+    loop {
+        // check if the plot capacity has changed at all since the last loop iteration, log any changes if so
+        let new_plot_capacity = get_total_plots_size_in_tebibytes();
+        if new_plot_capacity != last_plot_capacity {
+            let difference = new_plot_capacity - last_plot_capacity;
+            let sign;
+            let difference_color;
+            if difference > 0f64 {
+                sign = "+";
+                difference_color = "green";
+            } else {
+                sign = "";
+                difference_color = "red";
+            }
+            println!("{}\n  {} {} {} {}\n{}",
+                border.green().bold(),
+                get_time().white(), 
+                "TOTAL PLOT CAPACITY IS NOW".yellow(),
+                format!("{:.4} TiB", new_plot_capacity).white(),
+                format!("({}{:.4} TiB)", sign, difference).color(difference_color),
+                border.green().bold()
+            );
+            info!("TOTAL PLOT CAPACITY CHANGED FROM {} TiB => {} TiB ({}{} TiB)", last_plot_capacity, new_plot_capacity, sign, difference);
+        }
+        last_plot_capacity = new_plot_capacity;
+
+        // if 5 mins has elapsed since the last check and the user has miner offline warnings on, do a miner timeout check
+        if CONF.miner_offline_warnings.unwrap_or(true) && (Local::now() - last_timeout_check).num_seconds() >= 300 {
+            let connected_miners_map_guard = CONNECTED_MINER_DATA.lock().unwrap();
+            let current_time = Local::now();
+            let mut offline_warnings = String::from("");
+            let mut num_offline_miners = 0;
+            for (_, ip, last_updated) in connected_miners_map_guard.values() {
+                let time_since_last_updated = (current_time - *last_updated).num_seconds();
+                if time_since_last_updated >= CONF.miner_update_timeout.unwrap_or(1800) as i64 {
+                    let human_readable_time;
+                    if CONF.show_human_readable_deadlines.unwrap_or_default() { human_readable_time = String::from(""); } else {
+                        human_readable_time = format!(" ({})", format_timespan(time_since_last_updated as u64)); }
+                    let new_line;
+                    if offline_warnings.len() > 0 { new_line = "\n"; } else { new_line = ""; }
+                    warn!("MINER OFFLINE - Miner @ IP {} last seen {} seconds{} ago.", ip, time_since_last_updated, &human_readable_time);
+                    offline_warnings.push_str(format!("{}  - {} => Last seen {} seconds{} ago.", new_line, ip, time_since_last_updated, human_readable_time).as_str());
+                    num_offline_miners += 1;
+                }
+            }
+            drop(connected_miners_map_guard);
+            if offline_warnings.len() > 0 {
+                let miners_plural;
+                if num_offline_miners == 1 { miners_plural = ""; } else { miners_plural = "S"; }
+                println!("{}\n  {} {}\n{}\n{}\n{}",
+                    border.red().bold(),
+                    get_time().white(),
+                    format!("MINER{} OFFLINE!", miners_plural).red(),
+                    border.red().bold(),
+                    format!("{}", offline_warnings).red(),
+                    "------------------------------------------------------------------------------------------".red().bold(),
+                );
+            }
+            last_timeout_check = Local::now();
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
     }
 }

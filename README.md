@@ -117,50 +117,50 @@ pocChains:
 
 ## All Configuration Options for PoC Chains
 If you need more control over your chains, you can add any of these parameters to each chain. There is no set order to these.
-- `name`
+- `name` *`String`*
   - Required (But can be blank)
   - Used for displaying a friendly chain name in the Archon console.
-- `enabled`
+- `enabled` *`Boolean`*
   - Optional. Default = true
   - If this is set to false, Archon will ignore this chain completely.
-- `priority`
+- `priority` *`Boolean`*
   - Required (But only used if `priorityMode` = `true`)
   - A 0-based priority index. 0 = highest priority. MUST BE UNIQUE PER CHAIN.
-- `isHpool`
+- `isHpool` *`Boolean`*
   - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HPOOL`**
   - Set to true if this chain is for mining BHD via HPool. This will instruct Archon to send the supplied `accountKey` value to HPool on deadline submissions. *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
   - **NOTE:** You may only specify `isHpool` **OR** `isHdpool` on each chain - specifying both as true will result in a fatal error.
-- `isHdpool`
+- `isHdpool` *`Boolean`*
   - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HDPOOL`**
   - Set to true if this chain is for mining via HDPool. **To instruct Archon to talk directly to HDPool via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
   - **NOTE:** You may only specify `isHpool` **OR** `isHdpool` on each chain - specifying both as true will result in a fatal error.
-- `accountKey`
+- `accountKey` *`String`*
   - Optional. **REQUIRED FOR MINING BHD THROUGH `HPOOL` or `HDPOOL` _(Direct only, not required if you are using HDProxy for HDPool)_**
   - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Not used if `isHpool` and `isHdpool` are both false.*
-- `minerName`
+- `minerName` *`String`*
   - Optional.
   - Set this to use a custom name for reporting your miner name to your upstream pool, it will be reported as `<MINER_NAME> via Archon v<VERSION>`
   - If not specified, the following will apply:
     - If the chain is for HPool or HDPool, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon v<VERSION>` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon v<VERSION>`. 
     - For other chains, Archon will automatically set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially expose your identity to the public.
   - *Note: The User-Agent header that Archon sends with submissions will **always** be `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>`, you cannot customise that. This is only intended to give you a way to control the name that appears in the HDPool / HPool web interface, for monitoring purposes.*
-- `isBhd`
+- `isBhd` *`Boolean`*
   - Optional. Default = false
   - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. Not required if `isHpool` or `isHdpool` is set to `true`.
-- `isPool`
+- `isPool` *`Boolean`*
   - Optional. Default = false
   - Set to true if the chain is mining via a pool. Not required if `isHpool` or `isHdpool` is set to `true`.
-- `url`
+- `url` *`String`*
   - Required; **but may be left out if the chain is for `HDPool`.**
   - Must be a fully qualified URI including protocol, domain/IP and port, eg: `"http://voiplanparty.com:8124"`
   - If you wish to mine via HDPool **and use HDProxy**, do not specify `accountKey`, set `isHdpool` to `true`, and set `url` to your HDProxy URL, (eg `url: "http://localhost:60100"` if HDProxy is running on the same machine as Archon)
-- `historicalRounds`
+- `historicalRounds` *`Unsigned 16-bit Integer`*
   - Optional. Default = 360
   - Not used at the moment, but will be used later for statistics displayed in the Web UI (which is not implemented currently).
-- `targetDeadline`
+- `targetDeadline` *`Unsigned 64-bit Integer`*
   - Optional. Default = 18446744073709551615 (u64::max) or the pool/wallet's maximum deadline, if given.
   - Set this to the desired maximum deadline. Any deadlines submitted to Archon for this chain which are higher than this value will not be sent upstream.
-- `numericIdToPassphrase`
+- `numericIdToPassphrase` *`HashMap<Unsigned 64-bit Integer, String>`*
   - Optional.
   - Use this if this chain is for solo mining BURST.
   - Example format:
@@ -168,7 +168,7 @@ If you need more control over your chains, you can add any of these parameters t
 numericIdToPassphrase:
   12345678901234567890: passphrase for this numeric id goes here
 ```
-- `numericIdToTargetDeadline`
+- `numericIdToTargetDeadline` *`HashMap<Unsigned 64-bit Integer, Unsigned 64-bit Integer>`*
   - Optional.
   - Use this section to specify OVERRIDES for target deadlines. 
   - *Note: If a deadline is submitted from an ID specified here, for this chain, this target deadline WILL be used, provided it is under the maximum deadline reported by the upstream pool/wallet, if given.*
@@ -177,7 +177,7 @@ numericIdToPassphrase:
 numericIdToTargetDeadline:
   12345678901234567890: 86400          # 1 day target deadline for ID 12345678901234567890
 ```
-- `color`
+- `color` *`String`*
   - Required.
   - Specify a color for Archon to display info for this chain in.
   - Valid colors:
@@ -187,22 +187,29 @@ numericIdToTargetDeadline:
     - magenta
     - cyan
     - white
-- `getMiningInfoInterval`
+- `getMiningInfoInterval` *`Unsigned 8-bit Integer`*
   - Optional. Default = 3 seconds
   - Specify the interval, in seconds, that Archon will request mining info for this chain. Minimum is 1 second.
-- `useDynamicDeadlines`
+- `useDynamicDeadlines` *`Boolean`*
   - Optional. Default = false
   - If set to true, Archon will calculate your target deadline dynamically for each block, for this chain only.
-- `allowLowerBlockHeights`
+- `submitProbability` *`64-bit Float (Decimal)`*
+  - Optional. Default = 95
+  - Only used if `useDynamicDeadlines` is enabled for this chain. Controls the submit rate of the dynamic deadlines, which by default submit 95% of the time on average.
+  - Examples:
+    - `95` - 95% submission rate - this is the default.
+    - `223.4` - 223.4% submission rate - if 95% submission rate isn't your thing, you can go overboard if you wish.
+  - Note: You may make this number whatever you like (5, 300, 1000...), but be aware that it is a **multiplier** on the dynamic deadlines, if you go a bit crazy you may have overflow issues and/or application crashes/funky stuff happening.
+- `allowLowerBlockHeights` *`Boolean`*
   - Optional. Default = false
   - If set to true, Archon will change its new-block-detection method from "block height greater than previous" to "block height not equal to previous" for this chain only, which will consequently allow a lower block height to be mined in the same chain.
     - Use case: Only really useful if this chain is pointing at a multi-chain proxy, or a pool that mines multiple chains. *cough PoCC cough*
-- `requeueInterruptedBlocks`
+- `requeueInterruptedBlocks` *`Boolean`*
   - Optional. Default = true
   - If you disable this feature, this chain's blocks which get interrupted by a higher priority chain **WILL NOT** be requeued and mined after the higher priority chain finishes.
   - Only used if Archon is running in priority mode with block interrupting enabled (which is the default).
     - Use case: If this chain is a testnet chain or something you don't really care about mining every block for.
-- `maximumRequeueTimes`
+- `maximumRequeueTimes` *`Unsigned 8-bit Integer`*
   - Optional.
   - Specify a maximum number of times that a block for this chain will be requeued.
   - Only used if Archon is running in priority mode with block interrupting enabled (which is the default), and `requeueInterruptedBlocks` has not been disabled for this chain.
@@ -210,45 +217,45 @@ numericIdToTargetDeadline:
 
 ## Global Configuration Options
 Use these configuration options to control Archon's behavior.
-- `gracePeriod`
+- `gracePeriod` *`Boolean`*
   - Required.
   - __The amount of time that must elapse after a block starts, before Archon considers the block to be "complete".__
   - **This value is extremely important**, it is used as a timer by Archon to determine how much time must elapse after a block starts before Archon can send the next queued block to be mined, and also whether or not a new block should cause an old block to be interrupted (and perhaps requeued). Set it too small, and Archon will instruct your miners to start mining a new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely. Ideally it should be set around 5 seconds longer than your regular scan times. *(5 seconds just to give it a safety net to compensate for fluctuations)*
-- `priorityMode`
+- `priorityMode` *`Boolean`*
   - Optional. Default = true
   - This controls how Archon determines the order in which to send blocks to be mined.
     - `true` - Running in priority mode means that Archon will send new blocks immediately from higher priority chains that are currently being mined, ensuring that your higher priority blocks get mined ASAP. It also means that if multiple blocks are queued, Archon will always start the one from the highest priority chain first.
     - `false` - Running in [FIFO](https://en.wikipedia.org/wiki/FIFO_(computing_and_electronics)) mode means that Archon will not interrupt blocks, since all chains are the same priority, and Archon will always start the oldest block from the queue first.
-- `interruptLowerPriorityBlocks`
+- `interruptLowerPriorityBlocks` *`Boolean`*
   - Optional. Default = true
   - This option is only used in priority mode. If enabled, it will interrupt a currently mining block from a lower-priority chain, in order to mine a new block from a higher priority chain ASAP. The default behavior then is to requeue the lower priority block, but this can be overridden with a per-chain setting.
-- `webServerBindAddress`
+- `webServerBindAddress` *`String`*
   - Required.
   - Specify the IP binding you wish Archon to listen for connections on. `0.0.0.0` is universal. `127.0.0.1` is local machine only. You can also use the LAN IP of the host machine if you wish.
-- `webServerPort`
+- `webServerPort` *`Unsigned 16-bit Integer`*
   - Required.
   - Specify the Port that Archon will listen for incoming connections from your miners and for serving the Web UI on.
-- `usePocChainColors`
+- `usePocChainColors` *`String`*
   - Optional. Default = true.
   - If enabled, events (new block, deadline submitted etc) pertaining to a defined PoC Chain will be printed in the color specified in that chain's configuration.
   - If disabled, most of the printing will be in white.
-- `outageStatusUpdateInterval`
+- `outageStatusUpdateInterval` *`Unsigned 16-bit Integer`*
   - Optional. Default = 300 seconds / 5 minutes
   - This just avoids spamming the console with errors in the event of an outage.
-- `showHumanReadableDeadlines`
+- `showHumanReadableDeadlines` *`Boolean`*
   - Optional. Default = false
   - Appends a human readable time to deadlines and other durations. Eg: 3345951 **(1m 8d 17:25:51)**
-- `maskAccountIdsInConsole`
+- `maskAccountIdsInConsole` *`Boolean`*
   - Optional. Default = false
   - Hides all but the first and last three digits in the console of numeric IDs which submit deadlines to Archon. Eg: ID 12345678901234567890 => **1XXXXXXXXXXXXXXXX890**
     - Use case: None. I'm just paranoid. Use it if you wish :)
-- `use24HourTime`
+- `use24HourTime` *`Boolean`*
   - Optional. Default = false
   - If enabled, times printed to console will be in 24 hour format.
-- `numOldLogFilesToKeep`
+- `numOldLogFilesToKeep` *`Unsigned 8-bit Integer`*
   - Optional. Default = 5
   - Keeps this many *old* files in the `logs/` folder. A new `archon.log` file will be created and old files rotated every time Archon is launched. If `loggingLevel` = `Off`, this setting is not used. *Note: Archon will __never__ delete files, it will only overwrite log files as per normal, up to the limit specified here.*
-- `loggingLevel`
+- `loggingLevel` *`String`*
   - Optional. Default = `info` *(this is case insensitive)*
   - Sets how verbose Archon's file logging is.
     - I recommend leaving this on **info**, as debug and trace levels are *very* verbose and file sizes can get large, quickly..
@@ -259,7 +266,7 @@ Use these configuration options to control Archon's behavior.
     - `Info` - Recommended. Shows logs with **INFO|WARN|ERROR** levels.
     - `Warn` - Only show **WARN|ERROR** level logs.
     - `Error` - Only show **ERROR** level logs.
-- `dependencyLoggingLevel`
+- `dependencyLoggingLevel` *`String`*
   - Optional. Default = `info` *(this is case insensitive)*
   - Sets how verbose Archon's *dependencies* file logging is.
     - I recommend leaving this on **info**, as debug and trace levels are *very* verbose and file sizes can get large, quickly.
@@ -270,16 +277,16 @@ Use these configuration options to control Archon's behavior.
     - `Info` - Recommended. Shows logs with **INFO|WARN|ERROR** levels.
     - `Warn` - Only show **WARN|ERROR** level logs.
     - `Error` - Only show **ERROR** level logs.
-- `showMinerAddresses`
+- `showMinerAddresses` *`Boolean`*
   - Optional. Default = false
   - Shows the address that deadline submissions are received from.
-- `initialPlotCapacity`
-  - Optional.
-  - You may specify this as a value to use for initial plot capacity just after Archon starts up. *It will only be used until Archon receives info from your miners about your plot capacity, use it if you wish to use dynamic deadlines and your miner doesn't submit capacity headers until it submits a nonce. Or, update to a miner that does! (Scavenger 1.7.6 submits headers on getMiningInfo requests, which is much better)*
-- `minerUpdateTimeout`
+- `minerUpdateTimeout` *`Unsigned 32-bit Integer`*
   - Optional. Default = 1800 (30 minutes)
   - The amount of time that a miner must stop communicating with Archon for, for Archon to ignore that miner's capacity in Plot Capacity calculations.
   - If a miner doesn't communicate with Archon for longer than this period, Archon will no longer consider that miner's reported capacity as part of your total plot size. *For example, with the default setting of 30 minutes: If Miner System A has 50 TiB and Miner System B has 30 TiB, but Miner System B stops communication with Archon for 30 minutes or more, Archon will report your total plot capacity as 50 TiB rather than 80 TiB.*
+- `minerOfflineWarnings` *`Boolean`*
+  - Optional. Default = true
+  - If enabled, Archon will check every 5 minutes for miners that haven't sent an update in more than `minerUpdateTimeout` seconds (Default = 1800 seconds or 30 minutes) and show a warning in the console and write a warning to the log file if logging is enabled.
 
 ## Sample configuration file
 Archon will look in the working directory (usually the same location as the executable) for `archon.yaml`.

@@ -57,6 +57,9 @@ pub struct PocChain {
     pub use_dynamic_deadlines: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub submit_probability: Option<f64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub allow_lower_block_heights: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -149,7 +152,7 @@ pub struct Config {
     pub miner_update_timeout: Option<u32>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub initial_plot_capacity: Option<f64>,
+    pub miner_offline_warnings: Option<bool>,
 }
 
 impl Config {

@@ -14,6 +14,7 @@ use reqwest::header;
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
 use crate::web::{SubmitNonceResponse, SubmitNonceErrorResponse};
+use crate::LastBlockInfo;
 
 #[derive(Debug, Clone)]
 struct MiningInfoPollingResult {
@@ -82,7 +83,7 @@ fn get_header_value(string_data: String) -> header::HeaderValue {
 pub fn thread_arbitrate() {
     // wait for a couple of seconds to try to let connected miners send their plot size first, to
     // try to ensure dynamic deadlines etc are correct
-    std::thread::sleep(std::time::Duration::from_secs(3));
+    std::thread::sleep(std::time::Duration::from_secs(7));
     let (mining_info_sender, mining_info_receiver) = std_mpsc::channel();
     // start polling for mining info for each chain
     for inner in &crate::CONF.poc_chains {
@@ -518,23 +519,24 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
     );
     let current_chain_index = get_current_chain_index();
     let current_chain = super::get_chain_from_index(current_chain_index).unwrap();
+    // get currently mining block height before we change it
+    let current_block_height = match super::get_current_mining_info() {
+        Some(mi) => mi.height,
+        _ => 0,
+    };
+    let last_block_time = get_time_since_block_start(current_block_height);
     if crate::CONF.priority_mode.unwrap_or(true) {
         if mining_info_polling_result.chain.priority <= current_chain.priority {
             // higher priority is LOWER in actual value
             if index != current_chain_index {
                 if !has_grace_period_elapsed() {
                     if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
-                        requeue_current_block(
-                            current_chain.requeue_interrupted_blocks.unwrap_or(true),
-                            index,
-                            Some(mining_info_polling_result.clone())
-                        );
-                        start_mining_chain(index);
+                        start_mining_chain(index, Some(requeue_current_block(current_chain.requeue_interrupted_blocks.unwrap_or(true), index, Some(mining_info_polling_result.clone()))));
                         return;
                     } // else queue new block
                 } else {
                     // if grace period has elapsed
-                    start_mining_chain(index);
+                    start_mining_chain(index, Some(LastBlockInfo::Completed(last_block_time, current_chain_index)));
                     return;
                 }
             } else {
@@ -543,13 +545,13 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
                         // queue new block
                     }
                     (_, _, _) => {
-                        start_mining_chain(index);
+                        start_mining_chain(index, Some(LastBlockInfo::Superseded(last_block_time, current_chain_index)));
                     }
                 }
                 return;
             }
         } else if has_grace_period_elapsed() {
-            start_mining_chain(index);
+            start_mining_chain(index, Some(LastBlockInfo::Completed(last_block_time, current_chain_index)));
             return;
         } // else queue new block
     } else {
@@ -558,7 +560,7 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
             if has_grace_period_elapsed() {
                 match any_blocks_queued() {
                     (true, _, _) => {
-                        start_mining_chain(index);
+                        start_mining_chain(index, Some(LastBlockInfo::Completed(last_block_time, current_chain_index)));
                         return;
                     }
                     (false, _, _) => {}
@@ -567,7 +569,7 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
         } else {
             match any_blocks_queued() {
                 (false, _, _) => {
-                    start_mining_chain(index);
+                    start_mining_chain(index, Some(LastBlockInfo::Superseded(last_block_time, current_chain_index)));
                     return;
                 }
                 (true, _, _) => {}
@@ -576,14 +578,9 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
     }
     // if the code makes it to this point, the new block will be "queued".
     info!("QUEUE BLOCK - {} #{}", &*mining_info_polling_result.chain.name, mining_info_polling_result.mining_info.height);
-    /*super::print_block_queued(
-        &*mining_info_polling_result.chain.name,
-        &*mining_info_polling_result.chain.color,
-        mining_info_polling_result.mining_info.height,
-    );*/
 }
 
-fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info_polling_result: Option<MiningInfoPollingResult>) {
+fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info_polling_result: Option<MiningInfoPollingResult>) -> LastBlockInfo {
     let current_chain_index = get_current_chain_index();
     let current_chain = super::get_chain_from_index(current_chain_index).unwrap();
     let (requeued_height, requeued_time) = get_queued_chain_info(current_chain_index);
@@ -607,13 +604,14 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
             }
         }
     }
+    // get currently mining block height before we change it
+    let current_block_height = match super::get_current_mining_info() {
+        Some(mi) => mi.height,
+        _ => 0,
+    };
+    let last_block_time = get_time_since_block_start(current_block_height);
     let times_requeued = get_num_times_requeued(current_chain_index, requeued_height);
     if do_requeue && times_requeued < current_chain.maximum_requeue_times.unwrap_or(u8::max_value()) {
-        if current_chain.maximum_requeue_times.is_none() {
-            info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
-        } else {
-            info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{} - Requeue #{} of {}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height, times_requeued + 1, current_chain.maximum_requeue_times.unwrap());
-        }
         // set the queue status for this chain back by 1, thereby "requeuing" it
         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
         chain_queue_status_map.insert(current_chain_index, (requeued_height - 1, requeued_time));
@@ -623,26 +621,16 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
         // update the number of times this block height has been requeued
         let mut chain_requeue_times_map = crate::CHAIN_REQUEUE_TIMES.lock().unwrap();
         chain_requeue_times_map.insert(current_chain_index, (requeued_height, times_requeued + 1));
-        // print
-        /*super::print_block_requeued_or_interrupted(
-            &*current_chain.name,
-            &*current_chain.color,
-            requeued_height,
-            do_requeue,
-            times_requeued,
-            current_chain.maximum_requeue_times,
-        );*/
+        if current_chain.maximum_requeue_times.is_none() {
+            info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
+            LastBlockInfo::Requeued(None, last_block_time, current_chain_index)
+        } else {
+            info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{} - Requeue #{} of {}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height, times_requeued + 1, current_chain.maximum_requeue_times.unwrap());
+            LastBlockInfo::Requeued(Some((times_requeued, current_chain.maximum_requeue_times.unwrap())), last_block_time, current_chain_index)
+        }
     } else {
         info!("INTERRUPT BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
-        // print
-        /*super::print_block_requeued_or_interrupted(
-            &*current_chain.name,
-            &*current_chain.color,
-            requeued_height,
-            false,
-            times_requeued,
-            current_chain.maximum_requeue_times,
-        );*/
+        LastBlockInfo::Interrupted(last_block_time, current_chain_index)
     }
 }
 
@@ -730,7 +718,7 @@ pub fn get_latest_chain_info(index: u8) -> (u32, DateTime<Local>) {
     };
 }
 
-fn get_current_chain_mining_info(index: u8) -> Option<(MiningInfo, DateTime<Local>)> {
+pub fn get_current_chain_mining_info(index: u8) -> Option<(MiningInfo, DateTime<Local>)> {
     let chain_mining_infos_map = crate::CHAIN_MINING_INFOS.lock().unwrap();
     match chain_mining_infos_map.get(&index) {
         Some((mining_info, block_time)) => {
@@ -827,39 +815,40 @@ pub fn thread_arbitrate_queue() {
     loop {
         match any_blocks_queued() {
             (true, priority, index) => {
+                // get currently mining block height before we change it
+                let current_block_height = match super::get_current_mining_info() {
+                    Some(mi) => mi.height,
+                    _ => 0,
+                };
+                let current_chain_index = get_current_chain_index();
+                let last_block_time = get_time_since_block_start(current_block_height);
                 if crate::CONF.priority_mode.unwrap_or(true) {
                     match priority {
                         1 => {
                             // 1 = higher priority than current block
                             if has_grace_period_elapsed() {
-                                start_mining_chain(index);
+                                start_mining_chain(index, Some(LastBlockInfo::Completed(last_block_time, current_chain_index)));
                             } else if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
                                 let current_chain_index = get_current_chain_index();
-                                let current_chain =
-                                    super::get_chain_from_index(current_chain_index).unwrap();
-                                requeue_current_block(
-                                    current_chain.requeue_interrupted_blocks.unwrap_or(true),
-                                    index,
-                                    None
-                                );
-                                start_mining_chain(index);
+                                let current_chain = super::get_chain_from_index(current_chain_index).unwrap();
+                                start_mining_chain(index, Some(requeue_current_block(current_chain.requeue_interrupted_blocks.unwrap_or(true), index, None)));
                             } // else do nothing
                         }
                         0 => {
                             // 0 = same priority as current block
-                            start_mining_chain(index);
+                            start_mining_chain(index, Some(LastBlockInfo::Superseded(last_block_time, current_chain_index)));
                         }
                         _ => {
                             // -1 = lower priority than current block
                             if has_grace_period_elapsed() {
-                                start_mining_chain(index);
+                                start_mining_chain(index, Some(LastBlockInfo::Completed(last_block_time, current_chain_index)));
                             } // else do nothing
                         }
                     };
                 } else {
                     // FIFO mode
                     if has_grace_period_elapsed() {
-                        start_mining_chain(index);
+                        start_mining_chain(index, Some(LastBlockInfo::Completed(last_block_time, current_chain_index)));
                     } // else do nothing
                 }
             }
@@ -870,7 +859,7 @@ pub fn thread_arbitrate_queue() {
     }
 }
 
-fn start_mining_chain(index: u8) {
+fn start_mining_chain(index: u8, last_block_info: Option<super::LastBlockInfo>) {
     // get chain
     match super::get_chain_from_index(index) {
         Some(chain) => {
@@ -878,20 +867,13 @@ fn start_mining_chain(index: u8) {
             match get_current_chain_mining_info(index) {
                 Some((mining_info, _)) => {
                     if mining_info.base_target > 0 {
-                        // get currently mining block height before we change it
-                        let current_block_height = match super::get_current_mining_info() {
-                            Some(mi) => mi.height,
-                            _ => 0,
-                        };
-                        let last_block_time = get_time_since_block_start(current_block_height);
                         // print block info
                         super::print_block_started(
                             index,
                             mining_info.height,
                             mining_info.base_target,
                             String::from(&*mining_info.generation_signature),
-                            mining_info.target_deadline,
-                            last_block_time,
+                            last_block_info,
                         );
                         info!("START BLOCK - Chain #{} - Block #{} - Priority {} | {} | {}", index, mining_info.height, chain.priority, &*chain.name, &*chain.url);
                         // set last mining info
@@ -970,65 +952,6 @@ fn update_best_deadline(block_height: u32, account_id: u64, deadline: u64) {
             best_deadlines_map.insert(block_height, best_deadlines);
         }
     };
-}
-
-fn get_target_deadline(
-    account_id: u64,
-    base_target: u32,
-    chain_index: u8,
-    chain_global_tdl: Option<u64>,
-    chain_num_id_to_tdls: Option<HashMap<u64, u64>>,
-) -> (u64, bool) {
-    // get max deadline from upstream if present
-    let upstream_target_deadline;
-    let mut target_deadline = match get_current_chain_mining_info(chain_index) {
-        Some((mining_info, _)) => mining_info.target_deadline,
-        _ => u64::max_value(),
-    };
-    if target_deadline == 0 {
-        target_deadline = u64::max_value();
-    }
-    upstream_target_deadline = target_deadline;
-
-    // get chain's global target deadline, if set
-    target_deadline = match chain_global_tdl {
-        Some(global_tdl) => {
-            if global_tdl < target_deadline {
-                global_tdl
-            } else {
-                target_deadline
-            }
-        }
-        _ => target_deadline,
-    };
-
-    // calculate the dynamic deadline
-    target_deadline = match super::get_dynamic_deadline_for_block(base_target) {
-        (true, _, _, dynamic_target_deadline) => {
-            if dynamic_target_deadline < target_deadline {
-                dynamic_target_deadline
-            } else {
-                target_deadline
-            }
-        }
-        _ => target_deadline,
-    };
-
-    // check if there is a target deadline specified for this account id in this chain's config, if so, override all other deadlines with it
-    let mut id_override = false;
-    match chain_num_id_to_tdls {
-        Some(num_id_to_tdls_map) => {
-            for id_to_tdl in num_id_to_tdls_map {
-                if id_to_tdl.0 == account_id && id_to_tdl.1 < upstream_target_deadline {
-                    target_deadline = id_to_tdl.1;
-                    id_override = true;
-                }
-            }
-        }
-        _ => {}
-    };
-    debug!("GetTDL(ID={}, BTgt={}, chInd={}, ChTDL{:?}) = {} (Override: {})", account_id, base_target, chain_index, chain_global_tdl, target_deadline, id_override);
-    return (target_deadline, id_override);
 }
 
 fn forward_nonce_submission(
@@ -1132,13 +1055,18 @@ pub fn process_nonce_submission(
                     unadjusted_deadline = dl * base_target as u64;
                     adjusted_deadline = dl;
                 }
-                let (target_deadline, id_override) = get_target_deadline(
-                    account_id,
-                    base_target,
-                    chain_index,
-                    current_chain.target_deadline,
-                    current_chain.numeric_id_to_target_deadline,
-                );
+                let mut id_override = false;
+                use crate::TargetDeadlineType;
+                let target_deadline = match super::get_target_deadline(Some(account_id), base_target, chain_index, current_chain.clone()) {
+                    TargetDeadlineType::ConfigOverriddenByID(tdl) => {
+                        id_override = true;
+                        tdl
+                    },
+                    TargetDeadlineType::ConfigChainLevel(tdl) => tdl,
+                    TargetDeadlineType::Dynamic(tdl) => tdl,
+                    TargetDeadlineType::PoolMaximum(tdl) => tdl,
+                    TargetDeadlineType::Default => u64::max_value(),
+                };
                 // check that this deadline is lower than the target deadline
                 if adjusted_deadline > target_deadline {
                     send_deadline = false;

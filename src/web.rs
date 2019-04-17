@@ -319,7 +319,7 @@ fn handle_api_get_config(req: &HttpRequest) -> FutureResult<HttpResponse, Error>
                 show_miner_addresses: crate::CONF.show_miner_addresses,
                 dependency_logging_level: crate::CONF.dependency_logging_level.clone(),
                 miner_update_timeout: crate::CONF.miner_update_timeout,
-                initial_plot_capacity: crate::CONF.initial_plot_capacity,
+                miner_offline_warnings: crate::CONF.miner_offline_warnings,
             };
             let mut chains: Vec<PocChain> = Vec::new();
             for inner in &crate::CONF.poc_chains {
