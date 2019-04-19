@@ -665,11 +665,9 @@ fn is_block_start_printed(index: u8, height: u32) -> bool {
     let block_start_printed_map = BLOCK_START_PRINTED.lock().unwrap();
     match block_start_printed_map.get(&index) {
         Some(matched_height) => {
-            trace!("IsBlockStartPrinted - Chain #{} Block #{} = {} [Matched Height={}]", index, height, *matched_height == height, *matched_height);
             *matched_height == height
         },
         _ => {
-            trace!("IsBlockStartPrinted - Chain #{} Block #{} = false (No result for that chain yet)", index, height);
             false
         }
     }
@@ -895,7 +893,7 @@ fn print_block_started(
                 new_block_message.push_str(
                     format!("  {}      {}\n",
                         "Target Deadline:".color(color).bold(),
-                        format!("{}{} (Dynamic @ {}%)", dynamic_tdl, human_readable_target_deadline, current_chain.submit_probability.unwrap_or(95.0f64)).color(color),
+                        format!("{}{} (Dynamic @ {}%)", dynamic_tdl, human_readable_target_deadline, current_chain.submit_probability.unwrap_or(95)).color(color),
                     ).as_str(),
                 );
             },
@@ -936,7 +934,6 @@ fn print_block_started(
                 border.color(color).bold()
             ).as_str(),
         );
-        trace!("SET BLOCK START PRINTED {} #{}", chain_index, height);
         let mut block_start_printed_map = BLOCK_START_PRINTED.lock().unwrap();
         block_start_printed_map.insert(chain_index, height);
         println!("{}", new_block_message);
@@ -1150,7 +1147,6 @@ fn get_target_deadline(
             _ => {}
         };
     }
-    debug!("GetTDL(ID={:?}, BTgt={}, chInd={}) = {:?}", account_id, base_target, chain_index, target_deadline);
     return target_deadline;
 }
 
@@ -1161,10 +1157,7 @@ fn get_dynamic_deadline_for_block(base_target: u32) -> (u64, u64) {
     let plot_size_tebibytes = get_total_plots_size_in_tebibytes();
     // are we using dynamic deadlines for this chain?
     if plot_size_tebibytes > 0f64 {
-        let mut dynamic_target_deadline = (720f64 * (net_diff as f64) / plot_size_tebibytes) as u64;
-        if current_chain.submit_probability.unwrap_or(95f64) != 95f64 {
-            dynamic_target_deadline = ((dynamic_target_deadline / 95) as f64 * current_chain.submit_probability.unwrap_or(95f64)) as u64;
-        }
+        let dynamic_target_deadline = ((720f64 * (net_diff as f64) / plot_size_tebibytes) * (current_chain.submit_probability.unwrap_or(95) as f64 / 95f64)) as u64;
         (net_diff, dynamic_target_deadline)
     } else {
         (net_diff, u64::max_value())

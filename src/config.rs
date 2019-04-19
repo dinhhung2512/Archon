@@ -57,7 +57,7 @@ pub struct PocChain {
     pub use_dynamic_deadlines: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub submit_probability: Option<f64>,
+    pub submit_probability: Option<u16>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allow_lower_block_heights: Option<bool>,
@@ -210,7 +210,7 @@ showHumanReadableDeadlines: true
 
 # Mask Account IDs In Console: Optional. Default: false.
 #   Will mask most of any account IDs in the Archon console, if you're screenshot happy, but don't want people knowing your IDs :)
-#   Example: ID 12345678901234567890 => 1XXXXXXXXXXXXXXXX890
+#   Example: ID 12345678901234567890 => 1XXX890
 maskAccountIdsInConsole: false
 
 # Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
@@ -232,10 +232,9 @@ showMinerAddresses: false
 # Define PoC Chains to mine here, Archon will exit if there are no chains configured/enabled, you need at least one! #
 ######################################################################################################################
 
-# What follows is a default chain configuration, set up to mine BHD via HDProxy running on the same machine as Archon, and
-# Burst via the VoipLanParty.com pool.
+# What follows is a default chain configuration, set up to mine BHD via HDPool and Burst via the VoipLanParty.com pool.
 # A Testnet pool chain is also there, but disabled by default as most people won't wish to mine it.
-######## https://github.com/Bloodreaver/Archon#defining-your-mining-chains ########
+######## See https://github.com/Bloodreaver/Archon#defining-your-mining-chains for help with this if needed ########
 
 pocChains:
 # BHD via HDPool (Direct - no other applications needed)
@@ -247,14 +246,14 @@ pocChains:
 #    minerName: My Miner
     color: cyan
 
-### BURST via VLP pool (http://voiplanparty.com) ###
+# BURST via VLP pool (http://voiplanparty.com)
   - name: BURST - VLP [Pool]
     priority: 1
     isPool: true
     url: "http://voiplanparty.com:8124"
     color: magenta
 
-### BURST Testnet Pool - Disabled by default ###
+# BURST Testnet Pool - Disabled by default
   - name: BURST - TestNet [Pool]
     enabled: false
     priority: 2
