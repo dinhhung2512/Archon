@@ -131,7 +131,7 @@ fn thread_handle_hdpool_nonce_submissions(
         if ks == true {
             break;
         }
-        match receiver.try_recv() {
+        match receiver.recv() {
             Ok(submit_nonce_info) => {
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
                 let unix_timestamp = Local::now().timestamp();
@@ -167,8 +167,6 @@ fn thread_handle_hdpool_nonce_submissions(
             },
             Err(_) => {}
         };
-
-        thread::sleep(std::time::Duration::from_millis(50));    
     }
 }
 

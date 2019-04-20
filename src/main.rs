@@ -1246,9 +1246,20 @@ fn format_timespan(timespan: u64) -> String {
 }
 
 fn censor_account_id(account_id: u64) -> String {
-    let mut as_string = account_id.to_string();
+    let as_string = account_id.to_string();
     if CONF.mask_account_ids_in_console.unwrap_or_default() {
-        as_string.replace_range(1..as_string.len() - 3, "XXX");
+        let mut masked_account_id = String::from("");
+        let mut i = 0i8;
+        for c in as_string.chars() {
+            if i % 3 == 2 || i == 0 || i >= as_string.len() as i8 - 3 {
+                masked_account_id.push(c);
+            } else if i % 2 == 0 {
+                let c_u8 = c.to_string().parse::<i8>().unwrap_or(3i8);
+                masked_account_id.push_str(format!("{}", c_u8 + i / 1 + (5 + (c_u8 - c_u8 * 2 - i)).abs()).as_str());
+            }
+            i += 1;
+        }
+        return masked_account_id;
     }
     return as_string;
 }
@@ -1361,10 +1372,10 @@ fn thread_monitor_capacity() {
             let mut num_offline_miners = 0;
             for (_, ip, last_updated) in connected_miners_map_guard.values() {
                 let time_since_last_updated = (current_time - *last_updated).num_seconds();
-                if time_since_last_updated >= CONF.miner_update_timeout.unwrap_or(1800) as i64 {
+                if time_since_last_updated >= (CONF.miner_update_timeout.unwrap_or(1800) / 2) as i64 {
                     let human_readable_time;
-                    if CONF.show_human_readable_deadlines.unwrap_or_default() { human_readable_time = String::from(""); } else {
-                        human_readable_time = format!(" ({})", format_timespan(time_since_last_updated as u64)); }
+                    if CONF.show_human_readable_deadlines.unwrap_or_default() { human_readable_time = format!(" ({})", format_timespan(time_since_last_updated as u64)); } else {
+                        human_readable_time = String::from(""); }
                     let new_line;
                     if offline_warnings.len() > 0 { new_line = "\n"; } else { new_line = ""; }
                     warn!("MINER OFFLINE - Miner @ IP {} last seen {} seconds{} ago.", ip, time_since_last_updated, &human_readable_time);

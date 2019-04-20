@@ -201,24 +201,8 @@ webServerPort: 1337
 # NOTE: On windows, if your colors are dim, see: https://blogs.msdn.microsoft.com/commandline/2017/08/02/updating-the-windows-console-colors/
 usePocChainColors: true
 
-# Outage Status Update Interval: Optional. Interval (in seconds) in which to post logs about outages. Default = 300 seconds (5 minutes).
-#   The lower this number, the more error messages about outages you will see in the event of an outage.
-outageStatusUpdateInterval: 300
-
 # Show Human Readable Deadlines: Optional. If true, values displayed in seconds will be appended with a human readable value, for example: 3345951 (1m 8d 17:25:51)
 showHumanReadableDeadlines: true
-
-# Mask Account IDs In Console: Optional. Default: false.
-#   Will mask most of any account IDs in the Archon console, if you're screenshot happy, but don't want people knowing your IDs :)
-#   Example: ID 12345678901234567890 => 1XXX890
-maskAccountIdsInConsole: false
-
-# Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
-use24HourTime: false
-
-# Num Old Log Files to Keep: Optional. Default: 5.
-#  Only used if loggingLevel is not <Off>.
-numOldLogFilesToKeep: 5
 
 # Logging Level: Optional. Default: Info. Case insensitive.
 #   Valid options: off|trace|debug|info|warn|error

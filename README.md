@@ -142,7 +142,7 @@ If you need more control over your chains, you can add any of these parameters t
   - Set this to use a custom name for reporting your miner name to your upstream pool, it will be reported as `<MINER_NAME> via Archon v<VERSION>`
   - If not specified, the following will apply:
     - If the chain is for HPool or HDPool, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon v<VERSION>` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon v<VERSION>`. 
-    - For other chains, Archon will automatically set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially expose your identity to the public.
+    - For other chains, Archon will automatically set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially exposing your identity to the public.
   - *Note: The User-Agent header that Archon sends with submissions will **always** be `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>`, you cannot customise that. This is only intended to give you a way to control the name that appears in the HDPool / HPool web interface, for monitoring purposes.*
 - `isBhd` *`Boolean`*
   - Optional. Default = false
@@ -247,7 +247,7 @@ Use these configuration options to control Archon's behavior.
   - Appends a human readable time to deadlines and other durations. Eg: 3345951 **(1m 8d 17:25:51)**
 - `maskAccountIdsInConsole` *`Boolean`*
   - Optional. Default = false
-  - Hides all but the first and last three digits in the console of numeric IDs which submit deadlines to Archon. Eg: ID 12345678901234567890 => **1XXXXXXXXXXXXXXXX890**
+  - Masks Account IDs in the Archon console, leaving the first and last three digits intact. Eg: ID 12345678901234567890 => **1313621917225541890**
     - Use case: None. I'm just paranoid. Use it if you wish :)
 - `use24HourTime` *`Boolean`*
   - Optional. Default = false
@@ -286,7 +286,7 @@ Use these configuration options to control Archon's behavior.
   - If a miner doesn't communicate with Archon for longer than this period, Archon will no longer consider that miner's reported capacity as part of your total plot size. *For example, with the default setting of 30 minutes: If Miner System A has 50 TiB and Miner System B has 30 TiB, but Miner System B stops communication with Archon for 30 minutes or more, Archon will report your total plot capacity as 50 TiB rather than 80 TiB.*
 - `minerOfflineWarnings` *`Boolean`*
   - Optional. Default = true
-  - If enabled, Archon will check every 5 minutes for miners that haven't sent an update in more than `minerUpdateTimeout` seconds (Default = 1800 seconds or 30 minutes) and show a warning in the console and write a warning to the log file if logging is enabled.
+  - If enabled, Archon will check every 5 minutes for miners that haven't sent an update in more than **half of** `minerUpdateTimeout` seconds (Default = 1800 seconds or 30 minutes) and show a warning in the console and write a warning to the log file if logging is enabled.
 
 ## Sample configuration file
 Archon will look in the working directory (usually the same location as the executable) for `archon.yaml`.
@@ -339,24 +339,8 @@ webServerPort: 1337
 # NOTE: On windows, if your colors are dim, see: https://blogs.msdn.microsoft.com/commandline/2017/08/02/updating-the-windows-console-colors/
 usePocChainColors: true
 
-# Outage Status Update Interval: Optional. Interval (in seconds) in which to post logs about outages. Default = 300 seconds (5 minutes).
-#   The lower this number, the more error messages about outages you will see in the event of an outage.
-outageStatusUpdateInterval: 300
-
 # Show Human Readable Deadlines: Optional. If true, values displayed in seconds will be appended with a human readable value, for example: 3345951 (1m 8d 17:25:51)
 showHumanReadableDeadlines: true
-
-# Mask Account IDs In Console: Optional. Default: false.
-#   Will mask most of any account IDs in the Archon console, if you're screenshot happy, but don't want people knowing your IDs :)
-#   Example: ID 12345678901234567890 => 1XXX890
-maskAccountIdsInConsole: false
-
-# Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
-use24HourTime: false
-
-# Num Old Log Files to Keep: Optional. Default: 5.
-#  Only used if loggingLevel is not <Off>.
-numOldLogFilesToKeep: 5
 
 # Logging Level: Optional. Default: Info. Case insensitive.
 #   Valid options: off|trace|debug|info|warn|error
