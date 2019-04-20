@@ -193,12 +193,12 @@ numericIdToTargetDeadline:
 - `useDynamicDeadlines` *`Boolean`*
   - Optional. Default = false
   - If set to true, Archon will calculate your target deadline dynamically for each block, for this chain only.
-- `submitProbability` *`64-bit Float (Decimal)`*
+- `submitProbability` *`Unsigned 16-bit Integer`*
   - Optional. Default = 95
-  - Only used if `useDynamicDeadlines` is enabled for this chain. Controls the submit rate of the dynamic deadlines, which by default submit 95% of the time on average.
+  - Only used if `useDynamicDeadlines` is enabled for this chain. Controls the submit rate of the dynamic deadlines, which by default submit 95% of the time on average. It achieves this by multiplying the default calculated dynamic deadline against the percentage you specify here. Formula: `SubmitProbabilityTargetDeadline = (720 * NetworkDifficultyTiB / TotalPlotSizeInTiB) * (SubmitProbability / 95)` where `NetworkDifficultyTiB` is calculated using this formula: `NetworkDifficultyTiB = (4398046511104 / 240) / BaseTarget`.
   - Examples:
-    - `95` - 95% submission rate - this is the default.
-    - `223.4` - 223.4% submission rate - if 95% submission rate isn't your thing, you can go overboard if you wish.
+    - `95` - 95% submission rate - this is the default. If your normal Dynamic TDL was calculated as `3,000,000`, it will still be `3,000,000`.
+    - `223` - 223% submission rate - If your normal Dynamic TDL was calculated as `2,850,000` (95% default, 100% would be 3,000,000), 223% would change it to `6,690,000`. (2850000 * (223 / 95)).
   - Note: You may make this number whatever you like (5, 300, 1000...), but be aware that it is a **multiplier** on the dynamic deadlines, if you go a bit crazy you may have overflow issues and/or application crashes/funky stuff happening.
 - `allowLowerBlockHeights` *`Boolean`*
   - Optional. Default = false
@@ -348,7 +348,7 @@ showHumanReadableDeadlines: true
 
 # Mask Account IDs In Console: Optional. Default: false.
 #   Will mask most of any account IDs in the Archon console, if you're screenshot happy, but don't want people knowing your IDs :)
-#   Example: ID 12345678901234567890 => 1XXXXXXXXXXXXXXXX890
+#   Example: ID 12345678901234567890 => 1XXX890
 maskAccountIdsInConsole: false
 
 # Use 24 Hour Time: Optional. Default: false. Shows times in console as 24 hour format.
@@ -370,10 +370,9 @@ showMinerAddresses: false
 # Define PoC Chains to mine here, Archon will exit if there are no chains configured/enabled, you need at least one! #
 ######################################################################################################################
 
-# What follows is a default chain configuration, set up to mine BHD via HDProxy running on the same machine as Archon, and
-# Burst via the VoipLanParty.com pool.
+# What follows is a default chain configuration, set up to mine BHD via HDPool and Burst via the VoipLanParty.com pool.
 # A Testnet pool chain is also there, but disabled by default as most people won't wish to mine it.
-######## https://github.com/Bloodreaver/Archon#defining-your-mining-chains ########
+######## See https://github.com/Bloodreaver/Archon#defining-your-mining-chains for help with this if needed ########
 
 pocChains:
 # BHD via HDPool (Direct - no other applications needed)
@@ -385,14 +384,14 @@ pocChains:
 #    minerName: My Miner
     color: cyan
 
-### BURST via VLP pool (http://voiplanparty.com) ###
+# BURST via VLP pool (http://voiplanparty.com)
   - name: BURST - VLP [Pool]
     priority: 1
     isPool: true
     url: "http://voiplanparty.com:8124"
     color: magenta
 
-### BURST Testnet Pool - Disabled by default ###
+# BURST Testnet Pool - Disabled by default
   - name: BURST - TestNet [Pool]
     enabled: false
     priority: 2

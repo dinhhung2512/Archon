@@ -617,7 +617,6 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
         // set the queue status for this chain back by 1, thereby "requeuing" it
         let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
         chain_queue_status_map.insert(current_chain_index, (requeued_height - 1, requeued_time));
-        trace!("SET START - Chain #{} Block #{} ==> #{}", current_chain_index, requeued_height, requeued_height - 1);
         let mut block_start_printed_map = crate::BLOCK_START_PRINTED.lock().unwrap();
         block_start_printed_map.insert(current_chain_index, requeued_height - 1);
         // update the number of times this block height has been requeued
@@ -738,7 +737,7 @@ pub fn get_chain_index_from_height(height: u32) -> u8 {
             if chain.enabled.unwrap_or(true) {
                 let index = super::get_chain_index(&*chain.url, &*chain.name);
                 let (current_height, _) = get_latest_chain_info(index);
-                if current_height == height || current_height == height - 1 {
+                if current_height == height || (height > 0 && current_height == height - 1) {
                     return index;
                 }
             }
@@ -914,7 +913,6 @@ pub fn get_best_deadline(block_height: u32, account_id: u64) -> u64 {
             for best_deadline_tuple_ref in best_deadlines {
                 let (id, deadline) = best_deadline_tuple_ref;
                 if id == account_id {
-                    trace!("GetBestDL(Height={}, ID={}) = {}", block_height, account_id, deadline);
                     return deadline;
                 }
             }
