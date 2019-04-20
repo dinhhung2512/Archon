@@ -167,6 +167,8 @@ fn thread_handle_hdpool_nonce_submissions(
             },
             Err(_) => {}
         };
+
+        thread::sleep(std::time::Duration::from_millis(50));    
     }
 }
 
