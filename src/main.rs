@@ -786,7 +786,7 @@ fn print_block_started(
                     let human_time;
                     if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
                     let plural = match last_block_time { 1 => "", _ => "s", }; 
-                    last_block_time_str = format!("{}\n  Block completed after {} second{}{}\n", border2, last_block_time, plural, human_time);
+                    last_block_time_str = format!("{}\n  Block completed after {} second{}{}\n", border, last_block_time, plural, human_time);
                 } else {
                     last_block_time_str = String::from("")
                 }
@@ -797,7 +797,7 @@ fn print_block_started(
                 let human_time;
                 if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
                 let plural = match last_block_time { 1 => "", _ => "s", };
-                last_block_time_str = format!("{}\n  Block interrupted after {} second{}{}\n", border2, last_block_time, plural, human_time);
+                last_block_time_str = format!("{}\n  Block interrupted after {} second{}{}\n", border, last_block_time, plural, human_time);
             },
             Some(LastBlockInfo::Requeued(requeue_info, last_block_time, prev_block_chain_index)) => {
                 let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
@@ -807,16 +807,16 @@ fn print_block_started(
                         let human_time;
                         if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
                         let plural = match last_block_time { 1 => "", _ => "s", };
-                        last_block_time_str = format!("{}\n  Block requeued (#{}/{}) after {} second{}{}\n", border2, num_times + 1, max_times, last_block_time, plural, human_time);
+                        last_block_time_str = format!("{}\n  Block requeued (#{}/{}) after {} second{}{}\n", border, num_times + 1, max_times, last_block_time, plural, human_time);
                     },
                     _ => {
                         if last_block_time > 0 {
                             let human_time;
                             if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
                             let plural = match last_block_time { 1 => "", _ => "s", }; 
-                            last_block_time_str = format!("{}\n  Block requeued after {} second{}{}\n", border2, last_block_time, plural, human_time);
+                            last_block_time_str = format!("{}\n  Block requeued after {} second{}{}\n", border, last_block_time, plural, human_time);
                         } else {
-                            last_block_time_str = String::from("")
+                            last_block_time_str = format!("{}\n  Block requeued\n", border);
                         }
                     }
                 }
@@ -827,7 +827,7 @@ fn print_block_started(
                 let human_time;
                 if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
                 let plural = match last_block_time { 1 => "", _ => "s", }; 
-                last_block_time_str = format!("{}\n  Block superseded after {} second{}{}\n", border2, last_block_time, plural, human_time);
+                last_block_time_str = format!("{}\n  Block superseded after {} second{}{}\n", border, last_block_time, plural, human_time);
             },
             _ => {
                 last_block_time_str = String::from("");
@@ -851,13 +851,13 @@ fn print_block_started(
         new_block_message.push_str(
             format!("{}{}\n  {} {} => {} | {}\n{}\n  {}       {}\n  {}          {}\n",
                 last_block_time_str.color(last_block_chain_color).bold(),
-                border.color(color).bold(),
+                border2.color(color).bold(),
                 format!("{}", get_time()).white(),
                 " STARTED BLOCK".color(color),
                 format!("{}", &*current_chain.name).color(color),
                 format!("#{}", height).color(color),
                 //prev_block_time_str.color(color).bold(),
-                border.color(color).bold(),
+                border2.color(color).bold(),
                 "Total Capacity:".color(color).bold(),
                 format!("{:.4} TiB", get_total_plots_size_in_tebibytes()).color(color),
                 "Base Target:".color(color).bold(),

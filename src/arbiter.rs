@@ -1043,7 +1043,6 @@ pub fn process_nonce_submission(
         let mut print_deadline = true;
         let mut _deadline_sent = false;
         let mut deadline_accepted = false;
-        let mut deadline_rejected = false;
         let mut deadline_over_best = false;
         let mut _deadline_over_target = false;
         match deadline {
@@ -1130,14 +1129,14 @@ pub fn process_nonce_submission(
                         return resp.to_json();
                     }
                 }
+                let mut attempts = 0;
                 if send_deadline {
                     if current_chain.is_hdpool.unwrap_or_default() && current_chain.account_key.is_some() {
                         // get sender
                         let sender = crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap();
                         if sender.is_some() {
                             let sender = sender.clone().unwrap();
-                            let mut attempts = 0;
-                            while attempts < 5 && !deadline_accepted && !deadline_rejected {
+                            while attempts < 5 && !deadline_accepted {
                                 info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
                                 trace!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", account_id, height, nonce, adjusted_deadline, unadjusted_deadline, attempts + 1);
                                 let (hdp_submit_response_sender, hdp_submit_response_receiver) = crossbeam::channel::unbounded();
@@ -1152,7 +1151,7 @@ pub fn process_nonce_submission(
                                     Ok(()) => {
                                         trace!("HDP-WS - Sent DL to MPMC Successfully:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5\n        Awaiting confirm/rejection response...", account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
                                         let mut recv_attempts = 0;
-                                        while recv_attempts < 5 && !deadline_accepted && !deadline_rejected {
+                                        while recv_attempts < 5 && !deadline_accepted {
                                             match hdp_submit_response_receiver.recv() {
                                                 Ok(response) => {
                                                     trace!("HDP-WS - Receiver responded with:\n    {}", response);
@@ -1173,9 +1172,6 @@ pub fn process_nonce_submission(
                                     }
                                 };
                             }
-                            if !deadline_accepted {
-                                deadline_rejected = true;
-                            }
                         }
                     } else {
                         let mut url = String::from(&*current_chain.url);
@@ -1191,8 +1187,7 @@ pub fn process_nonce_submission(
                             height, account_id, nonce, passphrase_str).as_str());
                         }
                         //let client = reqwest::Client::new();
-                        let mut attempts = 0;
-                        while attempts < 5 && !deadline_accepted && !deadline_rejected {
+                        while attempts < 5 && !deadline_accepted {
                             _deadline_sent = true;
                             info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
                             let send_total_capacity = current_chain.is_hpool.unwrap_or_default();
@@ -1205,7 +1200,6 @@ pub fn process_nonce_submission(
                                     {
                                         deadline_accepted = true;
                                     } else {
-                                        deadline_rejected = true;
                                         failure_message.push_str(text.as_str());
                                     }
                                     break;
@@ -1216,46 +1210,49 @@ pub fn process_nonce_submission(
                             thread::sleep(std::time::Duration::from_secs(1));
                         }
                     }
-                }
-                if deadline_accepted {
-                    let confirm_time = (Local::now() - start_time).num_milliseconds();
-                    info!("DL Confirmed - #{} | ID={} | DL={} (Unadjusted={}) | {}ms", block_height, account_id, adjusted_deadline, unadjusted_deadline, confirm_time);
-                    // print nonce confirmation
-                    super::print_nonce_accepted(
-                        chain_index,
-                        height,
-                        adjusted_deadline,
-                        confirm_time,
-                    );
-                    // confirm deadline to miner
-                    let resp = SubmitNonceResponse {
-                        result: String::from("success"),
-                        deadline: Some(adjusted_deadline),
-                        reason: None,
-                    };
-                    return resp.to_json();
-                } else if deadline_rejected {
-                    let reject_time = (Local::now() - start_time).num_milliseconds();
-                    info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
-                    // print confirmation failure
-                    super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time);
-                    let (ds_success, response) = SubmitNonceResponse::from_json(failure_message.as_str());
-                    if ds_success {
-                        return response.to_json();
-                    } else {
-                        let (ds_error_success, _) = SubmitNonceErrorResponse::from_json(failure_message.as_str());
-                        if ds_error_success {
-                            return failure_message;
+                    if deadline_accepted {
+                        let confirm_time = (Local::now() - start_time).num_milliseconds();
+                        info!("DL Confirmed - #{} | ID={} | DL={} (Unadjusted={}) | {}ms", block_height, account_id, adjusted_deadline, unadjusted_deadline, confirm_time);
+                        // print nonce confirmation
+                        super::print_nonce_accepted(
+                            chain_index,
+                            height,
+                            adjusted_deadline,
+                            confirm_time,
+                        );
+                        // confirm deadline to miner
+                        let resp = SubmitNonceResponse {
+                            result: String::from("success"),
+                            deadline: Some(adjusted_deadline),
+                            reason: None,
+                        };
+                        return resp.to_json();
+                    } else { // deadline not accepted
+                        let reject_time = (Local::now() - start_time).num_milliseconds();
+                        if failure_message.len() == 0 && attempts == 5 {
+                            failure_message.push_str("Upstream didn't respond in a timely manner, after 5 attempts.");
+                        }
+                        info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
+                        // print confirmation failure
+                        super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time);
+                        let (ds_success, response) = SubmitNonceResponse::from_json(failure_message.as_str());
+                        if ds_success {
+                            return response.to_json();
                         } else {
-                            let resp = SubmitNonceResponse {
-                                result: String::from("failure"),
-                                deadline: None,
-                                reason: Some(format!(
-                                    "Unknown - Upstream returned: {}",
-                                    failure_message
-                                )),
-                            };
-                            return resp.to_json();
+                            let (ds_error_success, _) = SubmitNonceErrorResponse::from_json(failure_message.as_str());
+                            if ds_error_success {
+                                return failure_message;
+                            } else {
+                                let resp = SubmitNonceResponse {
+                                    result: String::from("failure"),
+                                    deadline: None,
+                                    reason: Some(format!(
+                                        "Unknown - Upstream returned: {}",
+                                        failure_message
+                                    )),
+                                };
+                                return resp.to_json();
+                            }
                         }
                     }
                 } else {
