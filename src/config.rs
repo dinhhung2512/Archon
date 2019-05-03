@@ -67,6 +67,9 @@ pub struct PocChain {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum_requeue_times: Option<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub append_version_to_miner_name: Option<bool>,
 }
 
 impl PartialEq for PocChain {

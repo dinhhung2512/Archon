@@ -52,6 +52,9 @@ Trying to be brief, for each chain you instruct Archon to manage, it will:
 - Once a second, in a separate thread, processes any blocks waiting to be mined, using logic to determine when to start mining them.
 ```
 
+## A note on configuration names:
+*ALL configuration option names (for global configuration and per chain) are _*CaSe SeNsItIvE*_, and obviously must be spelled correctly, as noted here in this readme.* To help remember this, the names are all **Camel Cased**; This means the __first word__ is all __lower__ case, and **following words all have their first letter in upper case**.
+
 ## Defining your mining chains
 Archon supports mining multiple chains in either a `priority mode (default)` or a `first in, first out mode`, you would only use the latter if you didn't value mining any one chain over another.
 
@@ -139,11 +142,14 @@ If you need more control over your chains, you can add any of these parameters t
   - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Not used if `isHpool` and `isHdpool` are both false.*
 - `minerName` *`String`*
   - Optional.
-  - Set this to use a custom name for reporting your miner name to your upstream pool, it will be reported as `<MINER_NAME> via Archon v<VERSION>`
+  - Set this to use a custom name for reporting your miner name to your upstream pool, it will be reported as `<MINER_NAME> via Archon`
   - If not specified, the following will apply:
-    - If the chain is for HPool or HDPool, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon v<VERSION>` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon v<VERSION>`. 
-    - For other chains, Archon will automatically set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially exposing your identity to the public.
+    - If the chain is for HPool or HDPool, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon`. 
+    - For other chains, Archon will ignore this setting if specified, and automatically set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially exposing your identity to the public.
   - *Note: The User-Agent header that Archon sends with submissions will **always** be `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>`, you cannot customise that. This is only intended to give you a way to control the name that appears in the HDPool / HPool web interface, for monitoring purposes.*
+- `appendVersionToMinerName` *`Boolean`*
+  - Optional. Default = false
+  - If this is enabled, Archon will automatically append the current version of itself to your `minerName` reported to `HPOOL` or `HDPOOL`.
 - `isBhd` *`Boolean`*
   - Optional. Default = false
   - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. Not required if `isHpool` or `isHdpool` is set to `true`.

@@ -38,34 +38,40 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
     let mut default_headers = header::HeaderMap::new();
     // if this chain is for hpool, add a default header to this client with the user's account key
     if chain.is_hpool.unwrap_or_default() {
-        let app_name_ver = format!("{} v{}", super::uppercase_first(super::APP_NAME), super::VERSION);
+        let app_name = format!("{}", super::uppercase_first(super::APP_NAME));
+        let app_name_ver = format!("{} v{}", app_name.clone(), super::VERSION);
         // get account key from config
         let account_key_header = chain.account_key.unwrap_or(String::from(""));
         default_headers.insert("X-Account", get_header_value(account_key_header));
-        let miner_name = match chain.miner_name.clone() {
-            Some(miner_name) => {
-                format!("{} via {}", miner_name, app_name_ver.clone())
+        let mut miner_name = match chain.miner_name.clone() {
+            Some(miner_name) => format!("{} via {}", miner_name, app_name.clone()),
+            _ => match gethostname::gethostname().to_str() {
+                Some(hostname) => format!("{} via {}", hostname, app_name.clone()),
+                None => app_name.clone(),
             },
-            _ => {
-                match gethostname::gethostname().to_str() {
-                    Some(hostname) => format!("{} via {}", hostname, app_name_ver.clone()),
-                    None => app_name_ver.clone()
-                }
-            }
         };
+        if chain.append_version_to_miner_name.unwrap_or_default() {
+            miner_name.push_str(format!(" v{}", super::VERSION).as_str());
+        }
         default_headers.insert("X-MinerName", get_header_value(miner_name));
-        default_headers.insert("X-Capacity", get_header_value(format!("{}", super::get_total_plots_size_in_tebibytes() * 1024f64)));
+        default_headers.insert(
+            "X-Capacity",
+            get_header_value(format!(
+                "{}",
+                super::get_total_plots_size_in_tebibytes() * 1024f64
+            )),
+        );
         default_headers.insert("X-Miner", get_header_value(app_name_ver.clone()));
-    }
+        }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
     chain_nonce_submission_clients.insert(
-        chain_index, 
+        chain_index,
         reqwest::Client::builder()
             .default_headers(default_headers)
             .timeout(std::time::Duration::from_secs(10))
             .build()
-            .unwrap()
-        );
+            .unwrap(),
+    );
     drop(chain_nonce_submission_clients);
 }
 
@@ -135,18 +141,21 @@ fn thread_handle_hdpool_nonce_submissions(
             Ok(submit_nonce_info) => {
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
                 let unix_timestamp = Local::now().timestamp();
-                let miner_name = match chain.miner_name.clone() {
+                let mut miner_name = match chain.miner_name.clone() {
                     Some(miner_name) => {
-                        format!("{} via ", miner_name)
+                        format!("{} via {}", miner_name, super::uppercase_first(super::APP_NAME))
                     },
                     _ => {
                         match gethostname::gethostname().to_str() {
-                            Some(hostname) => format!("{} via ", hostname),
-                            None => String::from("")
+                            Some(hostname) => format!("{} via {}", hostname, super::uppercase_first(super::APP_NAME)),
+                            None => super::uppercase_first(super::APP_NAME)
                         }
                     }
                 };
-                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{}{} v{}","submit":[{{"accountId":{},"height":{},"nonce":{},"deadline":{},"ts":{}}}]}}}}"#, account_key, capacity_gb, miner_mark, miner_name, super::uppercase_first(super::APP_NAME), super::VERSION, submit_nonce_info.account_id, submit_nonce_info.height, submit_nonce_info.nonce, submit_nonce_info.deadline_unadjusted, unix_timestamp);
+                if chain.append_version_to_miner_name.unwrap_or_default() {
+                    miner_name.push_str(format!(" v{}", super::VERSION).as_str());
+                }
+                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{}","submit":[{{"accountId":{},"height":{},"nonce":{},"deadline":{},"ts":{}}}]}}}}"#, account_key, capacity_gb, miner_mark, miner_name, submit_nonce_info.account_id, submit_nonce_info.height, submit_nonce_info.nonce, submit_nonce_info.deadline_unadjusted, unix_timestamp);
                 debug!("HDPool Websocket: SubmitNonce message: {}", message);
                 match tx.unbounded_send(Message::Text(message.clone().into())) {
                     Ok(_) => {
@@ -188,17 +197,20 @@ fn thread_hdpool_websocket(
         let addr = Url::parse("wss://hdminer.hdpool.com").unwrap();
         let miner_mark = "20190327";
         let account_key = chain.account_key.clone().unwrap_or(String::from(""));
-        let miner_name = match chain.miner_name.clone() {
+        let mut miner_name = match chain.miner_name.clone() {
             Some(miner_name) => {
-                format!("{} via ", miner_name)
+                format!("{} via {}", miner_name, super::uppercase_first(super::APP_NAME))
             },
             _ => {
                 match gethostname::gethostname().to_str() {
-                    Some(hostname) => format!("{} via ", hostname),
-                    None => String::from("")
+                    Some(hostname) => format!("{} via {}", hostname, super::uppercase_first(super::APP_NAME)),
+                    None => super::uppercase_first(super::APP_NAME)
                 }
             }
         };
+        if chain.append_version_to_miner_name.unwrap_or_default() {
+            miner_name.push_str(format!(" v{}", super::VERSION).as_str());
+        }
 
         // Spawn thread for the heartbeat loop to run in.
         let hb_child_thread = thread::spawn(move || {
@@ -211,8 +223,8 @@ fn thread_hdpool_websocket(
                     break;
                 }
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
-                let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{}{} v{}","miner_mark":"{}","capacity":{}}}}}"#,
-                    account_key, miner_name, crate::uppercase_first(crate::APP_NAME), crate::VERSION, miner_mark, capacity_gb);
+                let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{}","miner_mark":"{}","capacity":{}}}}}"#,
+                    account_key, miner_name, miner_mark, capacity_gb);
                 match txc.unbounded_send(Message::Text(data.clone().into())) {
                     Ok(_) => {
                         trace!("Heartbeat Sent:\n    {}", data);
@@ -960,21 +972,31 @@ fn forward_nonce_submission(
     mining_headers: crate::web::MiningHeaderData,
     miner_name: Option<String>,
     send_total_capacity: bool,
+    is_hpool: bool,
+    append_version_to_miner_name: bool,
 ) -> Option<String> {
     let chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
-    let version_str = format!("{} v{}", super::uppercase_first(super::APP_NAME), super::VERSION);
+    let app_name = super::uppercase_first(super::APP_NAME);
+    let app_name_ver = format!("{} v{}", app_name, super::VERSION);
     let hostname_os_str = gethostname::gethostname();
     let hostname = hostname_os_str.to_str();
-    let submission_miner_name;
+    let mut submission_miner_name;
     // X-MinerName = ChainConfig.miner_name > hostname > mining software user agent > Archon vx.x.x-pre
-    if miner_name.is_some() {
-        submission_miner_name = format!("{} via {}", user_agent_header, version_str.clone());
-    } else if hostname.is_some() {
-        submission_miner_name = format!("{} via {}", hostname.unwrap(), version_str.clone());
+    if is_hpool {
+        if miner_name.is_some() {
+            submission_miner_name = format!("{} via {}", user_agent_header, app_name.clone());
+        } else if hostname.is_some() {
+            submission_miner_name = format!("{} via {}", hostname.unwrap(), app_name.clone());
+        } else {
+            submission_miner_name = app_name.clone();
+        }
+        if append_version_to_miner_name {
+            submission_miner_name.push_str(format!(" v{}", super::VERSION).as_str());
+        }
     } else if mining_headers.miner_name.len() > 0 {
-        submission_miner_name = format!("{} via {}", mining_headers.miner_name, version_str.clone());
+        submission_miner_name = format!("{} via {}", user_agent_header, app_name_ver.clone());
     } else {
-        submission_miner_name = format!("{}", version_str.clone());
+        submission_miner_name = app_name_ver.clone();
     }
     let capacity_to_send;
     if send_total_capacity {
@@ -986,8 +1008,8 @@ fn forward_nonce_submission(
         Some(client) => {
             match client
                 .post(url)
-                .header("User-Agent", format!("{} via {}", user_agent_header, version_str.clone()))
-                .header("X-Miner", format!("{} via {}", user_agent_header, version_str))
+                .header("User-Agent", format!("{} via {}", user_agent_header, app_name_ver.clone()))
+                .header("X-Miner", format!("{} via {}", user_agent_header, app_name_ver))
                 .header("X-Capacity", capacity_to_send)
                 .header("X-MinerName", submission_miner_name)
                 .send()
@@ -1173,7 +1195,7 @@ pub fn process_nonce_submission(
                                 };
                             }
                         }
-                    } else {
+                    } else { // not hdpool
                         let mut url = String::from(&*current_chain.url);
                         // check if NOT solo mining burst
                         if current_chain.is_hdpool.unwrap_or_default()
@@ -1191,7 +1213,7 @@ pub fn process_nonce_submission(
                             _deadline_sent = true;
                             info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
                             let send_total_capacity = current_chain.is_hpool.unwrap_or_default();
-                            match forward_nonce_submission(chain_index, url.as_str(), user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), send_total_capacity)
+                            match forward_nonce_submission(chain_index, url.as_str(), user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), send_total_capacity, current_chain.is_hpool.unwrap_or_default(), current_chain.append_version_to_miner_name.unwrap_or_default())
                             {
                                 Some(text) => {
                                     debug!("DL Submit Response: {}", text);
