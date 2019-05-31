@@ -127,7 +127,7 @@ fn thread_handle_hdpool_nonce_submissions(
     tx: mpsc::UnboundedSender<Message>,
     ks_rx: crossbeam::channel::Receiver<bool>,
 ) {
-    let miner_mark = "20190327";
+    let miner_mark = "20190423";
     let account_key = chain.account_key.clone().unwrap_or(String::from(""));
     loop {
         let ks = match ks_rx.try_recv() {
@@ -194,8 +194,16 @@ fn thread_hdpool_websocket(
         let txs = tx.clone();
 
         // set vars
-        let addr = Url::parse("wss://hdminer.hdpool.com").unwrap();
-        let miner_mark = "20190327";
+        let addr;
+        if chain.is_hdpool.unwrap_or_default() {
+            addr = Url::parse("wss://hdminer.hdpool.com").unwrap();
+        } else if chain.is_hdpool_eco.unwrap_or_default() {
+            addr = Url::parse("wss://ecominer.hdpool.com").unwrap();
+        } else {
+            error!("Trying to set up websocket for HDPool Direct, but chain is not for HDPool CO or ECO Pool!");
+            return;
+        }
+        let miner_mark = "20190423";
         let account_key = chain.account_key.clone().unwrap_or(String::from(""));
         let mut miner_name = match chain.miner_name.clone() {
             Some(miner_name) => {
@@ -322,6 +330,7 @@ fn thread_get_mining_info(
     let mut url = String::from(&*chain.url);
     url.push_str("/burst?requestType=getMiningInfo");
     let mut last_block_height = 0 as u32;
+    let mut last_generation_signature = String::from("");
     let mut request_failure = false;
     let mut last_request_success: DateTime<Local> = Local::now();
     let mut last_outage_reminder_sent: DateTime<Local> = Local::now();
@@ -331,8 +340,8 @@ fn thread_get_mining_info(
     // Mpmc channels for now, for the ease of recreating the receiver if a thread dies. Will find a better solution later.
     let (hdpool_mining_info_sender, hdpool_mining_info_receiver) = crossbeam::channel::unbounded();
     
-    /* BEGIN ASYNC WEBSOCK STUFF. */
-    if chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some() {
+/* BEGIN ASYNC WEBSOCK STUFF. */
+    if (chain.is_hdpool.unwrap_or_default() || chain.is_hdpool_eco.unwrap_or_default()) && chain.account_key.is_some() {
         // setup mpsc channel to receive signal when nonce submissions are received from connected miners
         //let (hdpool_nonce_submission_sender, hdpool_nonce_submission_receiver) = std_mpsc::channel();
         // Mpmc channels for now, for the ease of recreating the receiver if a thread dies. Will find a better solution later.
@@ -347,10 +356,12 @@ fn thread_get_mining_info(
             thread_hdpool_websocket(chain_copy, hdpool_mining_info_sender.clone(), hdpool_nonce_submission_receiver);
         });
     }
-    /* END ASYNC WEBSOCK STUFF. */
+/* END ASYNC WEBSOCK STUFF. */
 
     loop {
-        let is_hdpool = chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some();
+        let is_hdpool = (chain.is_hdpool.unwrap_or_default()
+            || chain.is_hdpool_eco.unwrap_or_default())
+            && chain.account_key.is_some();
         let mining_info_response = match is_hdpool {
             true => {
                 match hdpool_mining_info_receiver.try_recv() {
@@ -457,8 +468,15 @@ fn thread_get_mining_info(
             if (chain.allow_lower_block_heights.unwrap_or_default()
                 && _mining_info.height != last_block_height)
                 || _mining_info.height > last_block_height
+                || (_mining_info.height == last_block_height && _mining_info.generation_signature != last_generation_signature) // fork detection
             {
+                // fork detection
+                let gensig = _mining_info.generation_signature.clone();
+                if _mining_info.height == last_block_height && gensig != last_generation_signature {
+                    info!("Fork Detected! (#{}, different gensig {}=>{})", last_block_height, last_generation_signature.clone(), gensig.clone());
+                }
                 last_block_height = _mining_info.height;
+                last_generation_signature = gensig;
                 let _mining_info_polling_result = MiningInfoPollingResult {
                     mining_info: _mining_info.clone(),
                     chain: chain.clone(),
@@ -525,6 +543,16 @@ pub fn get_current_chain_index() -> u8 {
     return *crate::CURRENT_CHAIN_INDEX.lock().unwrap();
 }
 
+fn requeue_forked_block(index: u8, height: u32, time: DateTime<Local>) {
+    let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
+    chain_queue_status_map.insert(index, (height - 1, time));
+    let mut block_start_printed_map = crate::BLOCK_START_PRINTED.lock().unwrap();
+    block_start_printed_map.insert(index, height - 1);
+    // reset the number of times this block height has been requeued
+    let mut chain_requeue_times_map = crate::CHAIN_REQUEUE_TIMES.lock().unwrap();
+    chain_requeue_times_map.insert(index, (height, 0));
+}
+
 fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
     let index = super::get_chain_index(
         &*mining_info_polling_result.chain.url,
@@ -538,7 +566,23 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
         _ => 0,
     };
     let last_block_time = get_time_since_block_start(current_block_height);
-    if crate::CONF.priority_mode.unwrap_or(true) {
+    // check if this is new info for a forked block
+    let (fork_check_height, fork_check_gensig) = match get_current_chain_mining_info(index) {
+        Some((mi, _)) => (mi.height, mi.generation_signature.clone()),
+        _ => (0, String::from("")),
+    };
+    let is_forked = fork_check_height == mining_info_polling_result.mining_info.height 
+                    && fork_check_gensig != mining_info_polling_result.mining_info.generation_signature;
+    if is_forked {
+        if index == current_chain_index {
+            start_mining_chain(index, Some(LastBlockInfo::Forked(last_block_time, current_chain_index)));
+        } else { // requeue the current block to force re-mining it with the new info
+            super::print_forked_and_queued(index, fork_check_height);
+            requeue_forked_block(index, fork_check_height, Local::now());
+        }
+        // update the mining info cache
+        super::add_mining_info_to_cache(index, mining_info_polling_result.mining_info.clone());
+    } else if crate::CONF.priority_mode.unwrap_or(true) {
         if mining_info_polling_result.chain.priority <= current_chain.priority {
             // higher priority is LOWER in actual value
             if index != current_chain_index {
@@ -993,6 +1037,12 @@ fn forward_nonce_submission(
         if append_version_to_miner_name {
             submission_miner_name.push_str(format!(" v{}", super::VERSION).as_str());
         }
+    } else if miner_name.clone().is_some() {
+        if append_version_to_miner_name {
+            submission_miner_name = format!("{} via {}", miner_name.clone().unwrap(), app_name_ver.clone());
+        } else {
+            submission_miner_name = format!("{} via {}", miner_name.clone().unwrap(), app_name.clone());
+        }
     } else if mining_headers.miner_name.len() > 0 {
         submission_miner_name = format!("{} via {}", user_agent_header, app_name_ver.clone());
     } else {
@@ -1004,12 +1054,13 @@ fn forward_nonce_submission(
     } else {
         capacity_to_send = mining_headers.capacity.to_string();
     }
+    trace!("DL Send URL: {}", url);
     match chain_nonce_submission_clients.get(&chain_index) {
         Some(client) => {
             match client
                 .post(url)
                 .header("User-Agent", format!("{} via {}", user_agent_header, app_name_ver.clone()))
-                .header("X-Miner", format!("{} via {}", user_agent_header, app_name_ver))
+                .header("X-Miner", format!("{} via {}", user_agent_header, app_name_ver.clone()))
                 .header("X-Capacity", capacity_to_send)
                 .header("X-MinerName", submission_miner_name)
                 .send()
@@ -1123,6 +1174,7 @@ pub fn process_nonce_submission(
                 // if solo mining burst, look for a passphrase from config for this account id
                 if !current_chain.is_hpool.unwrap_or_default()
                     && !current_chain.is_hdpool.unwrap_or_default()
+                    && !current_chain.is_hdpool_eco.unwrap_or_default()
                     && !current_chain.is_pool.unwrap_or_default()
                     && !current_chain.is_bhd.unwrap_or_default()
                 {
@@ -1153,7 +1205,8 @@ pub fn process_nonce_submission(
                 }
                 let mut attempts = 0;
                 if send_deadline {
-                    if current_chain.is_hdpool.unwrap_or_default() && current_chain.account_key.is_some() {
+                    // check if chain is HDPool Direct
+                    if (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some() {
                         // get sender
                         let sender = crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap();
                         if sender.is_some() {
@@ -1195,10 +1248,11 @@ pub fn process_nonce_submission(
                                 };
                             }
                         }
-                    } else { // not hdpool
+                    } else { // not hdpool direct
                         let mut url = String::from(&*current_chain.url);
                         // check if NOT solo mining burst
                         if current_chain.is_hdpool.unwrap_or_default()
+                            || current_chain.is_hdpool_eco.unwrap_or_default()
                             || current_chain.is_hpool.unwrap_or_default()
                             || current_chain.is_bhd.unwrap_or_default()
                             || current_chain.is_pool.unwrap_or_default() {
@@ -1212,8 +1266,8 @@ pub fn process_nonce_submission(
                         while attempts < 5 && !deadline_accepted {
                             _deadline_sent = true;
                             info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
-                            let send_total_capacity = current_chain.is_hpool.unwrap_or_default();
-                            match forward_nonce_submission(chain_index, url.as_str(), user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), send_total_capacity, current_chain.is_hpool.unwrap_or_default(), current_chain.append_version_to_miner_name.unwrap_or_default())
+                            //let send_total_capacity = current_chain.is_hpool.unwrap_or_default();
+                            match forward_nonce_submission(chain_index, url.as_str(), user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), true, current_chain.is_hpool.unwrap_or_default(), current_chain.append_version_to_miner_name.unwrap_or_default())
                             {
                                 Some(text) => {
                                     debug!("DL Submit Response: {}", text);
@@ -1290,6 +1344,7 @@ pub fn process_nonce_submission(
             }
             _ => {
                 if !current_chain.is_hdpool.unwrap_or_default()
+                    && !current_chain.is_hdpool_eco.unwrap_or_default()
                     && !current_chain.is_hpool.unwrap_or_default()
                     && !current_chain.is_pool.unwrap_or_default()
                     && !current_chain.is_bhd.unwrap_or_default() {

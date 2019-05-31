@@ -7,8 +7,7 @@ use colored::Colorize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::process::exit;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use fern;
 
@@ -47,6 +46,7 @@ enum TargetDeadlineType {
 enum LastBlockInfo {
     Requeued(Option<(u8, u8)>, u64, u8),
     Superseded(u64, u8),
+    Forked(u64, u8),
     Completed(u64, u8),
     Interrupted(u64, u8),
 }
@@ -256,10 +256,21 @@ fn main() {
                     if get_num_chains_with_priority(chain.priority) > 1 {
                         multiple_same_priority_chains = true;
                     }
-                    if chain.is_hdpool.unwrap_or_default() && chain.is_hpool.unwrap_or_default() {
+                    if (chain.is_hdpool.unwrap_or_default() || chain.is_hdpool_eco.unwrap_or_default()) && chain.is_hpool.unwrap_or_default() {
                         // fatal error - can't have chain defined as for both HPOOL and HDPOOL
                         println!("\n  {}", format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name).red().underline());
                         error!("The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name);
+
+                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+
+                        let mut blah = String::new();
+                        std::io::stdin().read_line(&mut blah).expect("FAIL");
+                        exit(0);
+                    }
+                    if chain.is_hdpool.unwrap_or_default() && chain.is_hdpool_eco.unwrap_or_default() {
+                        // fatal error - can't have chain defined as for both HDPOOL and HDPOOL ECO
+                        println!("\n  {}", format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HDPOOL ECO. Pick one!", &*chain.name).red().underline());
+                        error!("The chain \"{}\" is defined as both HDPOOL and HDPOOL ECO. Pick one!", &*chain.name);
 
                         println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
 
@@ -273,13 +284,13 @@ fn main() {
                         if chain.is_hpool.unwrap_or_default() {
                             warn!("Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name);
                             account_key_warnings.push_str(format!("    Chain \"{}\" is set for HPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
-                        } else if chain.is_hdpool.unwrap_or_default() {
+                        } else if chain.is_hdpool.unwrap_or_default() || chain.is_hdpool_eco.unwrap_or_default() {
                             warn!("Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name);
                             account_key_warnings.push_str(format!("    Chain \"{}\" is set for HDPOOL mining, but has no account key defined!\n", &*chain.name).as_str());
                         }
                     }
                     // check if URL is present if this chain is NOT for HDPool Direct
-                    if !(chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some()) && chain.url.clone().len() == 0 {
+                    if !((chain.is_hdpool.unwrap_or_default() || chain.is_hdpool_eco.unwrap_or_default()) && chain.account_key.is_some()) && chain.url.clone().len() == 0 {
                         invalid_url_warnings.push_str(format!("    Chain \"{}\" has no URL set when one is required!\n", &*chain.name).as_str());
 
                     }
@@ -300,6 +311,8 @@ fn main() {
                     let chain_url;
                     if chain.is_hdpool.unwrap_or_default() && chain.account_key.is_some() {
                         chain_url = "HDPOOL (WebSocket Direct)";
+                    } else if chain.is_hdpool_eco.unwrap_or_default() && chain.account_key.is_some() {
+                        chain_url = "HDPOOL ECO (WebSocket Direct)";
                     } else {
                         chain_url = &chain.url;
                     }
@@ -550,7 +563,6 @@ fn setup_logging() -> (String, bool, String, bool) {
                 .level_for("archon::web", log_level)
                 .level_for("archon::arbiter", log_level)
                 .level_for("archon::upstream", log_level)
-                .level_for("archon::hdpool", log_level)
                 .level_for("archon::config", log_level)
                 .level_for("archon::error", log_level)
                 .chain(log_file)
@@ -762,6 +774,20 @@ fn query_create_default_config() {
     };
 }
 
+fn print_forked_and_queued(chain_index: u8, height: u32) {
+    let chain = get_chain_from_index(chain_index).unwrap();
+    let color = get_color(&*chain.color);
+    let border = String::from("==========================================================================================");
+    println!("{}\n  {} {}\n{}",
+        border.yellow(),
+        get_time().white(),
+        format!("{} => FORK DETECTED: BLOCK {} REQUEUED",
+            &*chain.name.color(color),
+            format!("#{}", height).color(color),
+        ),
+        border.yellow(),
+    );
+}
 
 fn print_block_started(
     chain_index: u8,
@@ -829,6 +855,14 @@ fn print_block_started(
                 let plural = match last_block_time { 1 => "", _ => "s", }; 
                 last_block_time_str = format!("{}\n  Block superseded after {} second{}{}\n", border, last_block_time, plural, human_time);
             },
+            Some(LastBlockInfo::Forked(last_block_time, prev_block_chain_index)) => {
+                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                last_block_chain_color = prev_chain.color;
+                let human_time;
+                if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
+                let plural = match last_block_time { 1 => "", _ => "s", }; 
+                last_block_time_str = format!("{}\n  Block forked after {} second{}{}\n", border, last_block_time, plural, human_time);
+            },
             _ => {
                 last_block_time_str = String::from("");
                 last_block_chain_color = current_chain.color.to_string();
@@ -865,7 +899,10 @@ fn print_block_started(
             ).as_str(),
         );
         let mut human_readable_target_deadline = String::from("");
-        let is_bhd = current_chain.is_bhd.unwrap_or_default() || current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hpool.unwrap_or_default();
+        let is_bhd = current_chain.is_bhd.unwrap_or_default() || 
+                     current_chain.is_hdpool.unwrap_or_default() || 
+                     current_chain.is_hdpool_eco.unwrap_or_default() || 
+                     current_chain.is_hpool.unwrap_or_default();
         match get_target_deadline(None, base_target, chain_index, current_chain.clone()) {
             TargetDeadlineType::ConfigChainLevel(chain_tdl) => {
                 if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
@@ -1048,7 +1085,7 @@ fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confi
 
     if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let color = get_color(&*current_chain.color);
-        let is_hdpool = current_chain.is_hdpool.unwrap_or_default() && current_chain.account_key.is_some();
+        let is_hdpool = (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some();
         let confirm_text = match is_hdpool {
             true =>  "Submitted:",
             false => "Confirmed:",

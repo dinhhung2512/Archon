@@ -6,13 +6,13 @@
 A collision free, multi-chain proof of capacity mining proxy.
 
 ## Contents:
-- [What Archon does](https://github.com/Bloodreaver/Archon#what-archon-does)
-- [What Archon does not do](https://github.com/Bloodreaver/Archon#what-archon-does-not-do)
-- [Defining your mining chains](https://github.com/Bloodreaver/Archon#defining-your-mining-chains)
-- [All Configuration Options for PoC Chains](https://github.com/Bloodreaver/Archon#all-configuration-options-for-poc-chains)
-- [Global Configuration Options](https://github.com/Bloodreaver/Archon#global-configuration-options)
-- [Sample configuration file](https://github.com/Bloodreaver/Archon#sample-configuration-file)
-- [Donations](https://github.com/Bloodreaver/Archon#donations)
+- [What Archon does](#what-archon-does)
+- [What Archon does not do](#what-archon-does-not-do)
+- [Defining your mining chains](#defining-your-mining-chains)
+- [All Configuration Options for PoC Chains](#all-configuration-options-for-poc-chains)
+- [Global Configuration Options](#global-configuration-options)
+- [Sample configuration file](#sample-configuration-file)
+- [Donations](#donations)
 
 ## What Archon does:
 - Turns a regular single-chain miner into a multi-chain miner via intelligent and customizable queue management
@@ -23,7 +23,7 @@ A collision free, multi-chain proof of capacity mining proxy.
   - Can run in *priority* __or__ *first in, first out* queuing modes
   - Can interrupt lower priority blocks (toggleable)
   - Compatible with HDPool mining (directly, without the use of HDProxy or another program)
-  - [Customizable per-chain settings](https://github.com/Bloodreaver/Archon#all-configuration-options-for-poc-chains):
+  - [Customizable per-chain settings](#all-configuration-options-for-poc-chains):
     - Dynamic Deadlines (auto adjust for network difficulty based on total plot capacity)
     - Target deadline (for the entire chain)
     - Target deadline overrides (per ID)
@@ -58,7 +58,7 @@ Trying to be brief, for each chain you instruct Archon to manage, it will:
 ## Defining your mining chains
 Archon supports mining multiple chains in either a `priority mode (default)` or a `first in, first out mode`, you would only use the latter if you didn't value mining any one chain over another.
 
-Your PoC chains are defined in the `archon.yaml` configuration file, [see below](https://github.com/Bloodreaver/Archon#sample-configuration-file).
+Your PoC chains are defined in the `archon.yaml` configuration file, [see below](#sample-configuration-file).
 
 Note: You must have at least one PoC Chain defined, or Archon will have nothing to do!
 
@@ -73,11 +73,12 @@ pocChains:
     isHdpool: true
     color: cyan
 
-# BHD via HDPool (Direct - no other applications needed)
+# BHD via HDPool CO Pool (Direct - no other applications needed)
   - name: Second Chain
     priority: 1
   # Your HDPool account key goes here:
     accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+  # If you wish to mine on ECO pool, change the below line to isHdpoolEco: true
     isHdpool: true
 #    minerName: My Miner
     color: blue
@@ -132,32 +133,39 @@ If you need more control over your chains, you can add any of these parameters t
 - `isHpool` *`Boolean`*
   - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HPOOL`**
   - Set to true if this chain is for mining BHD via HPool. This will instruct Archon to send the supplied `accountKey` value to HPool on deadline submissions. *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
-  - **NOTE:** You may only specify `isHpool` **OR** `isHdpool` on each chain - specifying both as true will result in a fatal error.
+  - **NOTE:** You may only specify **ONE** of `isHpool` | `isHdpool` | `isHdpoolEco` on each chain - specifying more than one of these as true will result in a fatal error!
 - `isHdpool` *`Boolean`*
-  - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HDPOOL`**
-  - Set to true if this chain is for mining via HDPool. **To instruct Archon to talk directly to HDPool via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
-  - **NOTE:** You may only specify `isHpool` **OR** `isHdpool` on each chain - specifying both as true will result in a fatal error.
+  - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HDPOOL CO POOL`**
+  - Set to true if this chain is for mining via HDPool **CO POOL**.
+  - **To instruct Archon to talk directly to HDPool (CO Pool) via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - **NOTE:** You may only specify **ONE** of `isHpool` | `isHdpool` | `isHdpoolEco` on each chain - specifying more than one of these as true will result in a fatal error!
+- `isHdpoolEco` *`Boolean`*
+  - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HDPOOL ECO POOL`**
+  - Set to true if this chain is for mining via HDPool **ECO POOL**.
+  - **To instruct Archon to talk directly to HDPool (ECO Pool) via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - **NOTE:** You may only specify **ONE** of `isHpool` | `isHdpool` | `isHdpoolEco` on each chain - specifying more than one of these as true will result in a fatal error!
 - `accountKey` *`String`*
-  - Optional. **REQUIRED FOR MINING BHD THROUGH `HPOOL` or `HDPOOL` _(Direct only, not required if you are using HDProxy for HDPool)_**
-  - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Not used if `isHpool` and `isHdpool` are both false.*
+  - Optional. **REQUIRED FOR MINING BHD THROUGH `HPOOL` or `HDPOOL (CO & ECO)` _(Direct only, not required if you are using HDProxy for HDPool)_**
+  - If this chain is for mining BHD via HPool or HDPool (directly), set this to your Account Key so that Archon can supply it when communicating with the pool. *Only used for HPOOL / HDPOOL (ECO or CO Pools).*
 - `minerName` *`String`*
   - Optional.
   - Set this to use a custom name for reporting your miner name to your upstream pool, it will be reported as `<MINER_NAME> via Archon`
+  - *You may append your currently running Archon version to the miner name (i.e. `<MINER_NAME> via Archon vX.Y.Z`) by setting the `appendVersionToMinerName` setting to true for this chain. See the next option.*
   - If not specified, the following will apply:
-    - If the chain is for HPool or HDPool, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon`. 
-    - For other chains, Archon will ignore this setting if specified, and automatically set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially exposing your identity to the public.
-  - *Note: The User-Agent header that Archon sends with submissions will **always** be `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>`, you cannot customise that. This is only intended to give you a way to control the name that appears in the HDPool / HPool web interface, for monitoring purposes.*
+    - If the chain is for HPool or HDPool, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon`.
+    - For other chains, Archon will set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially exposing your identity to the public.
+  - *Note: The `User-Agent` header that Archon sends with submissions will always be `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>`, you cannot customise that. This is only intended to give you a way to control the name that appears in your upstream pool/proxy web interface, for monitoring purposes, if it is supported.*
 - `appendVersionToMinerName` *`Boolean`*
   - Optional. Default = false
-  - If this is enabled, Archon will automatically append the current version of itself to your `minerName` reported to `HPOOL` or `HDPOOL`.
+  - If this is enabled, Archon will automatically append the current version of itself to your `minerName`.
 - `isBhd` *`Boolean`*
   - Optional. Default = false
-  - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. Not required if `isHpool` or `isHdpool` is set to `true`.
+  - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. *Not required if any of `isHpool`, `isHdpool` or `isHdpoolEco` are set to `true`.*
 - `isPool` *`Boolean`*
   - Optional. Default = false
-  - Set to true if the chain is mining via a pool. Not required if `isHpool` or `isHdpool` is set to `true`.
+  - Set to true if the chain is mining via a pool. *Not required if any of `isHpool`, `isHdpool` or `isHdpoolEco` are set to `true`.*
 - `url` *`String`*
-  - Required; **but may be left out if the chain is for `HDPool`.**
+  - Required; **but may be left out if the chain is for `HDPool (CO or ECO)` and you *are not* using HDProxy.**
   - Must be a fully qualified URI including protocol, domain/IP and port, eg: `"http://voiplanparty.com:8124"`
   - If you wish to mine via HDPool **and use HDProxy**, do not specify `accountKey`, set `isHdpool` to `true`, and set `url` to your HDProxy URL, (eg `url: "http://localhost:60100"` if HDProxy is running on the same machine as Archon)
 - `historicalRounds` *`Unsigned 16-bit Integer`*
