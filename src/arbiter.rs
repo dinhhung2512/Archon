@@ -1283,7 +1283,7 @@ pub fn process_nonce_submission(
                                 _ => {}
                             };
                             attempts += 1;
-                            thread::sleep(std::time::Duration::from_secs(1));
+                            thread::sleep(std::time::Duration::from_secs(5));
                         }
                     }
                     if deadline_accepted {
@@ -1311,25 +1311,7 @@ pub fn process_nonce_submission(
                         info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
                         // print confirmation failure
                         super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time);
-                        let (ds_success, response) = SubmitNonceResponse::from_json(failure_message.as_str());
-                        if ds_success {
-                            return response.to_json();
-                        } else {
-                            let (ds_error_success, _) = SubmitNonceErrorResponse::from_json(failure_message.as_str());
-                            if ds_error_success {
-                                return failure_message;
-                            } else {
-                                let resp = SubmitNonceResponse {
-                                    result: String::from("failure"),
-                                    deadline: None,
-                                    reason: Some(format!(
-                                        "Unknown - Upstream returned: {}",
-                                        failure_message
-                                    )),
-                                };
-                                return resp.to_json();
-                            }
-                        }
+                        return failure_message;
                     }
                 } else {
                     debug!("FAKE Confirm - #{} | DL={} (Unadjusted={})", block_height, adjusted_deadline, unadjusted_deadline);
