@@ -158,6 +158,9 @@ If you need more control over your chains, you can add any of these parameters t
 - `appendVersionToMinerName` *`Boolean`*
   - Optional. Default = false
   - If this is enabled, Archon will automatically append the current version of itself to your `minerName`.
+- `minerAlias` *`String`*
+  - Optional.
+  - Use this to provide a custom miner alias to upstream pools which support it. Achieves this by accompanying your deadline submissions with an `X-MinerAlias` Header containing the value set here.
 - `isBhd` *`Boolean`*
   - Optional. Default = false
   - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. *Not required if any of `isHpool`, `isHdpool` or `isHdpoolEco` are set to `true`.*

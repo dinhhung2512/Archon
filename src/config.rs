@@ -73,6 +73,9 @@ pub struct PocChain {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub append_version_to_miner_name: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub miner_alias: Option<String>,
 }
 
 impl PartialEq for PocChain {

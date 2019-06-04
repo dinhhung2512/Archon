@@ -13,7 +13,7 @@ use reqwest::header;
 
 use crate::config::PocChain;
 use crate::upstream::MiningInfo;
-use crate::web::{SubmitNonceResponse, SubmitNonceErrorResponse};
+use crate::web::{SubmitNonceResponse};
 use crate::LastBlockInfo;
 
 #[derive(Debug, Clone)]
@@ -36,6 +36,9 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
     // get current chain
     let chain = super::get_chain_from_index(chain_index).unwrap();
     let mut default_headers = header::HeaderMap::new();
+    if chain.miner_alias.is_some() {
+        default_headers.insert("x-mineralias", get_header_value(chain.miner_alias.unwrap()));
+    }
     // if this chain is for hpool, add a default header to this client with the user's account key
     if chain.is_hpool.unwrap_or_default() {
         let app_name = format!("{}", super::uppercase_first(super::APP_NAME));
@@ -68,7 +71,7 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
         chain_index,
         reqwest::Client::builder()
             .default_headers(default_headers)
-            .timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(3))
             .build()
             .unwrap(),
     );
@@ -598,7 +601,7 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
                 }
             } else {
                 match any_blocks_queued() {
-                    (true, 0...1, _) => {
+                    (true, 0..=1, _) => {
                         // queue new block
                     }
                     (_, _, _) => {
@@ -709,29 +712,33 @@ fn has_grace_period_elapsed() -> bool {
     }
 
 pub fn get_time_since_block_start(height: u32) -> u64 {
-    let current_chain_index = get_chain_index_from_height(height);
-    let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
-    if chain_queue_status_map.len() > 0 {
-        match chain_queue_status_map.get(&current_chain_index) {
-            Some((_, start_time)) => {
-                return (Local::now() - *start_time).num_seconds() as u64;
-            },
-            _ => return 0u64,
-        };
+    let (chain_matched, current_chain_index) = get_chain_index_from_height(height);
+    if chain_matched {
+        let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
+        if chain_queue_status_map.len() > 0 {
+            match chain_queue_status_map.get(&current_chain_index) {
+                Some((_, start_time)) => {
+                    return (Local::now() - *start_time).num_seconds() as u64;
+                },
+                _ => return 0u64,
+            };
         }
+    }
     return 0u64;
 }
 
 fn get_time_since_block_start_ms(height: u32) -> u64 {
-    let current_chain_index = get_chain_index_from_height(height);
-    let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
-    if chain_queue_status_map.len() > 0 {
-        match chain_queue_status_map.get(&current_chain_index) {
-            Some((_, start_time)) => {
-                return (Local::now() - *start_time).num_milliseconds() as u64;
-                },
-            _ => return 0u64,
-        };
+    let (chain_matched, current_chain_index) = get_chain_index_from_height(height);
+    if chain_matched {
+        let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
+        if chain_queue_status_map.len() > 0 {
+            match chain_queue_status_map.get(&current_chain_index) {
+                Some((_, start_time)) => {
+                    return (Local::now() - *start_time).num_milliseconds() as u64;
+                    },
+                _ => return 0u64,
+            };
+        }
     }
     return 0u64;
 }
@@ -786,19 +793,22 @@ pub fn get_current_chain_mining_info(index: u8) -> Option<(MiningInfo, DateTime<
     }
 }
 
-pub fn get_chain_index_from_height(height: u32) -> u8 {
+pub fn get_chain_index_from_height(height: u32) -> (bool, u8) {
     for inner in &crate::CONF.poc_chains {
         for chain in inner {
             if chain.enabled.unwrap_or(true) {
                 let index = super::get_chain_index(&*chain.url, &*chain.name);
                 let (current_height, _) = get_latest_chain_info(index);
                 if current_height == height || (height > 0 && current_height == height - 1) {
-                    return index;
+                    trace!("Matched Block #{} to Chain #{}", height, index);
+                    return (true, index);
                 }
             }
         }
     }
-    return get_current_chain_index();
+    let current_chain_index = get_current_chain_index();
+    trace!("Couldn't match Block #{} to a chain, using current chain index ({})", height, current_chain_index);
+    return (false, current_chain_index);
 }
 
 // indicates state of queue
@@ -1098,19 +1108,22 @@ pub fn process_nonce_submission(
     debug!("Received DL: Height={}, ID={}, Nonce={}, DL={:?}, Software={}, Adjusted={}, Address={}", block_height, account_id, nonce, deadline, user_agent_header, adjusted, remote_addr);
     // validate data
     // get mining info for chain
-    let chain_index = get_chain_index_from_height(block_height); // defaults to the chain being currently mined if it cannot find a height match
+    let (chain_matched, mut chain_index) = get_chain_index_from_height(block_height); // defaults to the chain being currently mined if it cannot find a height match
+    let mut height = block_height;
+    if height == 0 {
+        if !chain_matched {
+            chain_index = get_current_chain_index();
+            }
+        height = match get_latest_chain_info(chain_index) {
+            (height, _) => height,
+        };
+    }
     let current_chain = super::get_chain_from_index(chain_index).unwrap();
     let base_target = match get_current_chain_mining_info(chain_index) {
         Some((mining_info, _)) => mining_info.base_target,
         _ => 0,
     };
     if base_target > 0 {
-        let mut height = block_height;
-        if height == 0 {
-            height = match get_latest_chain_info(chain_index) {
-                (height, _) => height,
-            };
-        }
         let start_time = Local::now();
         let mut send_deadline = true;
         let mut print_deadline = true;
@@ -1151,7 +1164,7 @@ pub fn process_nonce_submission(
                     deadline_over_best = true;
                     print_deadline = false;
                 }
-                let mut failure_message = String::from("");
+                let mut failure_message: Option<String> = None;
                 // find time since block was started
                 let time_since_block_started = get_time_since_block_start_ms(height);
                 if print_deadline {
@@ -1203,17 +1216,17 @@ pub fn process_nonce_submission(
                         return resp.to_json();
                     }
                 }
-                let mut attempts = 0;
                 if send_deadline {
-                    // check if chain is HDPool Direct
-                    if (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some() {
-                        // get sender
-                        let sender = crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap();
-                        if sender.is_some() {
-                            let sender = sender.clone().unwrap();
-                            while attempts < 5 && !deadline_accepted {
-                                info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
-                                trace!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", account_id, height, nonce, adjusted_deadline, unadjusted_deadline, attempts + 1);
+                    let mut attempt = 0;
+                    while attempt < 5 && !deadline_accepted {
+                        // check if chain is HDPool Direct
+                        if (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some() {
+                            // get sender
+                            let sender = crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap();
+                            if sender.is_some() {
+                                let sender = sender.clone().unwrap();
+                                info!("DL Send - #{} | ID={} | DL={} (Unadjusted={})", block_height, account_id, adjusted_deadline, unadjusted_deadline);
+                                trace!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={}", account_id, height, nonce, adjusted_deadline, unadjusted_deadline);
                                 let (hdp_submit_response_sender, hdp_submit_response_receiver) = crossbeam::channel::unbounded();
                                 match sender.send(HDPoolSubmitNonceInfo { 
                                     account_id: account_id,
@@ -1224,48 +1237,40 @@ pub fn process_nonce_submission(
                                     notify_response_sender: hdp_submit_response_sender.clone(),
                                 }) {
                                     Ok(()) => {
-                                        trace!("HDP-WS - Sent DL to MPMC Successfully:\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5\n        Awaiting confirm/rejection response...", account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
-                                        let mut recv_attempts = 0;
-                                        while recv_attempts < 5 && !deadline_accepted {
-                                            match hdp_submit_response_receiver.recv() {
-                                                Ok(response) => {
-                                                    trace!("HDP-WS - Receiver responded with:\n    {}", response);
-                                                    deadline_accepted = true;
-                                                },
-                                                Err(why) => {
-                                                    debug!("HDP-WS - Receiver failed to receive submission response signal: {}", why);
-                                                    recv_attempts += 1;
-                                                    // wait 250ms before trying again
-                                                    std::thread::sleep(std::time::Duration::from_millis(250));
-                                                }
+                                        trace!("HDP-WS - Sent DL to MPMC Successfully:\n    ID={} Height={} Nonce={} DL={} UDL={}\n        Awaiting confirm/rejection response...", account_id, height, nonce,adjusted_deadline, unadjusted_deadline);
+                                        match hdp_submit_response_receiver.recv() {
+                                            Ok(response) => {
+                                                trace!("HDP-WS - Receiver responded with:\n    {}", response);
+                                                deadline_accepted = true;
+                                            },
+                                            Err(why) => {
+                                                debug!("HDP-WS - Receiver failed to receive submission response signal: {}", why);
+                                                attempt += 1;
+                                                continue;
                                             }
                                         }
                                     },
                                     Err(why) => {
-                                        debug!("HDP-WS - Failed to signal receiver: {:?}\n    ID={} Height={} Nonce={} DL={} UDL={} Attempt #{}/5", why, account_id, height, nonce,adjusted_deadline, unadjusted_deadline, attempts + 1);
-                                        attempts += 1;
+                                        debug!("HDP-WS - Failed to signal receiver: {:?}\n    ID={} Height={} Nonce={} DL={} UDL={}", why, account_id, height, nonce, adjusted_deadline, unadjusted_deadline);
                                     }
                                 };
                             }
-                        }
-                    } else { // not hdpool direct
-                        let mut url = String::from(&*current_chain.url);
-                        // check if NOT solo mining burst
-                        if current_chain.is_hdpool.unwrap_or_default()
-                            || current_chain.is_hdpool_eco.unwrap_or_default()
-                            || current_chain.is_hpool.unwrap_or_default()
-                            || current_chain.is_bhd.unwrap_or_default()
-                            || current_chain.is_pool.unwrap_or_default() {
-                            url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
-                            height, account_id, nonce, unadjusted_deadline).as_str());
-                        } else { // solo mining burst
-                            url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
-                            height, account_id, nonce, passphrase_str).as_str());
-                        }
-                        //let client = reqwest::Client::new();
-                        while attempts < 5 && !deadline_accepted {
+                        } else { // not hdpool direct
+                            let mut url = String::from(&*current_chain.url);
+                            // check if NOT solo mining burst
+                            if current_chain.is_hdpool.unwrap_or_default()
+                                || current_chain.is_hdpool_eco.unwrap_or_default()
+                                || current_chain.is_hpool.unwrap_or_default()
+                                || current_chain.is_bhd.unwrap_or_default()
+                                || current_chain.is_pool.unwrap_or_default() {
+                                url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
+                                height, account_id, nonce, unadjusted_deadline).as_str());
+                            } else { // solo mining burst
+                                url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
+                                height, account_id, nonce, passphrase_str).as_str());
+                            }
                             _deadline_sent = true;
-                            info!("DL Send - #{} | ID={} | DL={} (Unadjusted={}) - Attempt #{}/5", block_height, account_id, adjusted_deadline, unadjusted_deadline, attempts + 1);
+                            info!("DL Send - #{} | ID={} | DL={} (Unadjusted={})", block_height, account_id, adjusted_deadline, unadjusted_deadline);
                             //let send_total_capacity = current_chain.is_hpool.unwrap_or_default();
                             match forward_nonce_submission(chain_index, url.as_str(), user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), true, current_chain.is_hpool.unwrap_or_default(), current_chain.append_version_to_miner_name.unwrap_or_default())
                             {
@@ -1276,14 +1281,21 @@ pub fn process_nonce_submission(
                                     {
                                         deadline_accepted = true;
                                     } else {
-                                        failure_message.push_str(text.as_str());
+                                        if text.len() > 0 && failure_message.clone().is_none() {
+                                            failure_message = Some(text);
+                                        } else if text.len() > 0 && failure_message.clone().is_some() && text != failure_message.clone().unwrap() {
+                                            // append new text to previous
+                                            failure_message = Some(format!("{}{}", failure_message.clone().unwrap(), text));
+                                        }
+                                        attempt += 1;
+                                        continue;
                                     }
-                                    break;
+                                },
+                                _ => {
+                                    attempt += 1;
+                                    continue;
                                 }
-                                _ => {}
                             };
-                            attempts += 1;
-                            thread::sleep(std::time::Duration::from_secs(5));
                         }
                     }
                     if deadline_accepted {
@@ -1305,13 +1317,19 @@ pub fn process_nonce_submission(
                         return resp.to_json();
                     } else { // deadline not accepted
                         let reject_time = (Local::now() - start_time).num_milliseconds();
-                        if failure_message.len() == 0 && attempts == 5 {
-                            failure_message.push_str("Upstream didn't respond in a timely manner, after 5 attempts.");
-                        }
-                        info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
+                        info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {:?}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
                         // print confirmation failure
                         super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time);
-                        return failure_message;
+                        if failure_message.is_some() {
+                            return failure_message.unwrap();
+                        } else {
+                            let resp = SubmitNonceResponse {
+                                result: String::from("failure"),
+                                deadline: Some(adjusted_deadline),
+                                reason: Some(String::from("Upstream failed to respond after 5 attempts to submit.")),
+                            };
+                            return resp.to_json();
+                        }
                     }
                 } else {
                     debug!("FAKE Confirm - #{} | DL={} (Unadjusted={})", block_height, adjusted_deadline, unadjusted_deadline);

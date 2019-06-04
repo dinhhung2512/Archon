@@ -1003,8 +1003,8 @@ fn print_nonce_submission(
             deadline_string.push_str(format!(" ({})", format_timespan(deadline)).as_str());
         }
         let deadline_color = match deadline {
-            0...3600 => "green",
-            3601...86400 => "yellow",
+            0..=3600 => "green",
+            3601..=86400 => "yellow",
             _ => "white",
         };
         // remote_addr is an endpoint, need to truncate the port and just leave the hostname/ip
