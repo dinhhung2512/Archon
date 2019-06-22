@@ -268,6 +268,9 @@ numericIdToTargetDeadline:
 - `payoutAddress` *`String`*
   - Optional, but Required for Foxy-Pool type upstreams.
   - Sends the specified value as an `X-Account` header for Foxy-Pool upstreams to use.
+- `timeout` *`Unsigned 8-bit Integer`*
+  - Optional. Default = 5 seconds.
+  - Specify a timeout duration for this chain, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` chain configuration setting.
 - `submitAttempts` *`Unsigned 8-bit Integer`*
   - Optional. Default = 5 attempts.
   - Specify a maximum amount of times that Archon will attempt to submit a deadline before giving up.
@@ -344,6 +347,12 @@ Use these configuration options to control Archon's behavior.
 - `minerOfflineWarnings` *`Boolean`*
   - Optional. Default = true
   - If enabled, Archon will check every 5 minutes for miners that haven't sent an update in more than **half of** `minerUpdateTimeout` seconds (Default = 1800 seconds or 30 minutes) and show a warning in the console and write a warning to the log file if logging is enabled.
+- `timeout` *`Unsigned 8-bit Integer`*
+  - Optional. Default = 5 seconds.
+  - Override the default timeout duration for all chains, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` configuration setting (per chain or global).
+- `submitAttempts` *`Unsigned 8-bit Integer`*
+  - Optional. Default = 5 attempts.
+  - Override the default maximum amount of times that Archon will attempt to submit a deadline before giving up.
 
 ## Sample configuration file
 Archon will look in the working directory (usually the same location as the executable) for `archon.yaml`.

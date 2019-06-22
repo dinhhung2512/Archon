@@ -226,13 +226,13 @@ fn handle_submit_nonce(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
                         deadline = None;
                     }
                     create_response(
-                        StatusCode::OK, 
+                        StatusCode::OK,
                         arbiter::process_nonce_submission(
                             submit_nonce_data.block_height.unwrap_or(0),
                             submit_nonce_data.account_id,
                             submit_nonce_data.nonce,
                             deadline,
-                            miner_software.as_str(),
+                            miner_software,
                             is_adjusted,
                             req.connection_info().remote().unwrap_or("").to_string(),
                             mining_header_data,
@@ -320,6 +320,8 @@ fn handle_api_get_config(req: &HttpRequest) -> FutureResult<HttpResponse, Error>
                 dependency_logging_level: crate::CONF.dependency_logging_level.clone(),
                 miner_update_timeout: crate::CONF.miner_update_timeout,
                 miner_offline_warnings: crate::CONF.miner_offline_warnings,
+                timeout: crate::CONF.timeout.clone(),
+                submit_attempts: crate::CONF.submit_attempts.clone(),
             };
             let mut chains: Vec<PocChain> = Vec::new();
             for inner in &crate::CONF.poc_chains {

@@ -71,11 +71,15 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
         }
     }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
+    let timeout = match chain.timeout.unwrap_or(crate::CONF.timeout.unwrap_or(5)) as u64 {
+        0..=2 => 3u64,
+        other => other
+    };
     chain_nonce_submission_clients.insert(
         chain_index,
         reqwest::Client::builder()
             .default_headers(default_headers)
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(timeout))
             .build()
             .unwrap(),
     );
@@ -105,9 +109,13 @@ pub fn thread_arbitrate() {
                 let new_sender = mining_info_sender.clone();
                 let index = super::get_chain_index(&*chain.url, &*chain.name);
                 create_chain_nonce_submission_client(index);
+                let timeout = match chain.timeout.unwrap_or(crate::CONF.timeout.unwrap_or(5)) as u64 {
+                    0..=2 => 3u64,
+                    other => other
+                };
                 thread::spawn(move || {
                     thread_get_mining_info(
-                        reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap(),
+                        reqwest::Client::builder().timeout(std::time::Duration::from_secs(timeout)).build().unwrap(),
                         chain.clone(),
                         new_sender,
                     );
@@ -712,18 +720,18 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
 }
 
 fn is_block_requeued(chain_index: u8, block_height: u32) -> bool {
-    let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
-    match chain_queue_status_map.get(&chain_index) {
-        Some((height, _)) => {
-            if *height == block_height {
-                return true;
+    if block_height > 0 {
+        let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
+        match chain_queue_status_map.get(&chain_index) {
+            Some((height, _)) => {
+                if *height == block_height - 1 {
+                    return true;
+                }
             }
-            false
-        }
-        _ => {
-            false
+            _ => {}
         }
     }
+    false
 }
 
 fn has_grace_period_elapsed() -> bool {
@@ -1131,7 +1139,7 @@ pub fn process_nonce_submission(
     account_id: u64,
     nonce: u64,
     deadline: Option<u64>,
-    user_agent_header: &str,
+    user_agent_header: String,
     adjusted: bool,
     remote_addr: String,
     mining_headers: crate::web::MiningHeaderData,
@@ -1204,10 +1212,10 @@ pub fn process_nonce_submission(
                         height,
                         account_id,
                         adjusted_deadline,
-                        user_agent_header,
+                        &user_agent_header,
                         target_deadline,
                         id_override,
-                        remote_addr,
+                        remote_addr.clone(),
                         time_since_block_started,
                     );
                 }
@@ -1223,7 +1231,7 @@ pub fn process_nonce_submission(
                     && !current_chain.is_bhd.unwrap_or_default()
                 {
                     let mut passphrase_set = false;
-                    match current_chain.numeric_id_to_passphrase {
+                    match current_chain.clone().numeric_id_to_passphrase {
                         Some(map) => {
                             for id_and_passphrase in map {
                                 if id_and_passphrase.0 == account_id {
@@ -1251,110 +1259,158 @@ pub fn process_nonce_submission(
                     }
                 }
                 if send_deadline {
-                    let mut attempt = 0;
-                    let attempts = current_chain.submit_attempts.unwrap_or(5);
-                    while ((attempt == 0 && attempts == 0) || attempt < attempts) && !deadline_accepted {
-                        // check if chain is HDPool Direct
-                        if (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some() {
-                            // get sender
-                            let sender = crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap();
-                            if sender.is_some() {
-                                let sender = sender.clone().unwrap();
-                                info!("DL Send - #{} | ID={} | DL={} (Unadjusted={})", block_height, account_id, adjusted_deadline, unadjusted_deadline);
-                                trace!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={}", account_id, height, nonce, adjusted_deadline, unadjusted_deadline);
-                                let (hdp_submit_response_sender, hdp_submit_response_receiver) = crossbeam::channel::unbounded();
-                                match sender.send(HDPoolSubmitNonceInfo { 
-                                    account_id: account_id,
-                                    height: height,
-                                    nonce: nonce,
-                                    deadline_unadjusted: unadjusted_deadline,
-                                    deadline_adjusted: adjusted_deadline,
-                                    notify_response_sender: hdp_submit_response_sender.clone(),
-                                }) {
-                                    Ok(()) => {
-                                        trace!("HDP-WS - Sent DL to MPMC Successfully:\n    ID={} Height={} Nonce={} DL={} UDL={}\n        Awaiting confirm/rejection response...", account_id, height, nonce,adjusted_deadline, unadjusted_deadline);
-                                        match hdp_submit_response_receiver.recv() {
-                                            Ok(response) => {
-                                                trace!("HDP-WS - Receiver responded with:\n    {}", response);
-                                                deadline_accepted = true;
-                                            },
-                                            Err(why) => {
-                                                debug!("HDP-WS - Receiver failed to receive submission response signal: {}", why);
-                                                attempt += 1;
-                                                std::thread::sleep(std::time::Duration::from_secs(3));
-                                                continue;
-                                            }
-                                        }
-                                    },
-                                    Err(why) => {
-                                        debug!("HDP-WS - Failed to signal receiver: {:?}\n    ID={} Height={} Nonce={} DL={} UDL={}", why, account_id, height, nonce, adjusted_deadline, unadjusted_deadline);
-                                    }
-                                };
-                            }
-                        } else { // not hdpool direct
-                            let mut url = String::from(&*current_chain.url);
-                            // check if NOT solo mining burst
-                            if current_chain.is_hdpool.unwrap_or_default()
-                                || current_chain.is_hdpool_eco.unwrap_or_default()
-                                || current_chain.is_hpool.unwrap_or_default()
-                                || current_chain.is_bhd.unwrap_or_default()
-                                || current_chain.is_pool.unwrap_or_default() {
-                                if current_chain.is_boomcoin.unwrap_or(false) {
-                                    url.push_str(format!("/boom?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
-                                height, account_id, nonce, unadjusted_deadline).as_str());
-                                } else {
-                                    url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
-                                height, account_id, nonce, unadjusted_deadline).as_str());
-                                }
-                            } else { // solo mining burst / boom
-                                if current_chain.is_boomcoin.unwrap_or(false) {
-                                    url.push_str(format!("/boom?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
-                                height, account_id, nonce, passphrase_str).as_str());
-                                } else {
-                                    url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
-                                height, account_id, nonce, passphrase_str).as_str());
-                                }
-                            }
-                            _deadline_sent = true;
-                            info!("DL Send - #{} | ID={} | DL={} (Unadjusted={})", block_height, account_id, adjusted_deadline, unadjusted_deadline);
-                            //let send_total_capacity = current_chain.is_hpool.unwrap_or_default();
-                            match forward_nonce_submission(chain_index, url.as_str(), user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), true, current_chain.is_hpool.unwrap_or_default(), current_chain.append_version_to_miner_name.unwrap_or_default())
-                            {
-                                Some(text) => {
-                                    debug!("DL Submit Response ({}): {}", adjusted_deadline, text);
-                                    if text.contains("success")
-                                        && text.contains(format!("{}", adjusted_deadline).as_str())
-                                    {
-                                        deadline_accepted = true;
-                                    } else {
-                                        if text.len() > 0 && failure_message.clone().is_none() {
-                                            if text.contains("error reaching upstream") {
-                                                attempt += 1;
-                                                if attempt < attempts {
-                                                    let color = super::get_color(&*current_chain.color);
-                                                    println!("          {}, {}:            {} {}",
-                                                        "Pool error".red(),
-                                                        "retrying".yellow(),
-                                                        adjusted_deadline.to_string().color(color),
-                                                        format!("({}/{})", attempt + 1, attempts).yellow(),
-                                                    );
+                    thread::spawn(move || {
+                        let mut attempt = 0;
+                        let attempts = current_chain.submit_attempts.unwrap_or(crate::CONF.submit_attempts.unwrap_or(5));
+                        while ((attempt == 0 && attempts == 0) || attempt < attempts) && !deadline_accepted {
+                            // check if chain is HDPool Direct
+                            if (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some() {
+                                // get sender
+                                let sender = crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap();
+                                if sender.is_some() {
+                                    let sender = sender.clone().unwrap();
+                                    info!("DL Send - #{} | ID={} | DL={} (Unadjusted={})", block_height, account_id, adjusted_deadline, unadjusted_deadline);
+                                    trace!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={}", account_id, height, nonce, adjusted_deadline, unadjusted_deadline);
+                                    let (hdp_submit_response_sender, hdp_submit_response_receiver) = crossbeam::channel::unbounded();
+                                    match sender.send(HDPoolSubmitNonceInfo { 
+                                        account_id: account_id,
+                                        height: height,
+                                        nonce: nonce,
+                                        deadline_unadjusted: unadjusted_deadline,
+                                        deadline_adjusted: adjusted_deadline,
+                                        notify_response_sender: hdp_submit_response_sender.clone(),
+                                    }) {
+                                        Ok(()) => {
+                                            trace!("HDP-WS - Sent DL to MPMC Successfully:\n    ID={} Height={} Nonce={} DL={} UDL={}\n        Awaiting confirm/rejection response...", account_id, height, nonce,adjusted_deadline, unadjusted_deadline);
+                                            match hdp_submit_response_receiver.recv() {
+                                                Ok(response) => {
+                                                    trace!("HDP-WS - Receiver responded with:\n    {}", response);
+                                                    deadline_accepted = true;
+                                                },
+                                                Err(why) => {
+                                                    debug!("HDP-WS - Receiver failed to receive submission response signal: {}", why);
+                                                    attempt += 1;
                                                     std::thread::sleep(std::time::Duration::from_secs(3));
                                                     continue;
                                                 }
                                             }
-                                            failure_message = Some(text);
-                                            break;
-                                        } else if text.len() > 0 && failure_message.clone().is_some() && text != failure_message.clone().unwrap() {
-                                            // append new text to previous
-                                            failure_message = Some(format!("{}{}", failure_message.clone().unwrap(), text));
-                                            break;
+                                        },
+                                        Err(why) => {
+                                            debug!("HDP-WS - Failed to signal receiver: {:?}\n    ID={} Height={} Nonce={} DL={} UDL={}", why, account_id, height, nonce, adjusted_deadline, unadjusted_deadline);
                                         }
+                                    };
+                                }
+                            } else { // not hdpool direct
+                                let mut url = String::from(&*current_chain.url);
+                                // check if NOT solo mining burst
+                                if current_chain.is_hdpool.unwrap_or_default()
+                                    || current_chain.is_hdpool_eco.unwrap_or_default()
+                                    || current_chain.is_hpool.unwrap_or_default()
+                                    || current_chain.is_bhd.unwrap_or_default()
+                                    || current_chain.is_pool.unwrap_or_default() {
+                                    if current_chain.is_boomcoin.unwrap_or(false) {
+                                        url.push_str(format!("/boom?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
+                                    height, account_id, nonce, unadjusted_deadline).as_str());
+                                    } else {
+                                        url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
+                                    height, account_id, nonce, unadjusted_deadline).as_str());
+                                    }
+                                } else { // solo mining burst / boom
+                                    if current_chain.is_boomcoin.unwrap_or(false) {
+                                        url.push_str(format!("/boom?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
+                                    height, account_id, nonce, passphrase_str).as_str());
+                                    } else {
+                                        url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
+                                    height, account_id, nonce, passphrase_str).as_str());
+                                    }
+                                }
+                                _deadline_sent = true;
+                                info!("DL Send - #{} | ID={} | DL={} (Unadjusted={})", block_height, account_id, adjusted_deadline, unadjusted_deadline);
+                                //let send_total_capacity = current_chain.is_hpool.unwrap_or_default();
+                                match forward_nonce_submission(chain_index, url.as_str(), &user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), true, current_chain.is_hpool.unwrap_or_default(), current_chain.append_version_to_miner_name.unwrap_or_default())
+                                {
+                                    Some(text) => {
+                                        debug!("DL Submit Response ({}): {}", adjusted_deadline, text);
+                                        if text.contains("success")
+                                            && text.contains(format!("{}", adjusted_deadline).as_str())
+                                        {
+                                            deadline_accepted = true;
+                                        } else {
+                                            if text.len() > 0 && failure_message.clone().is_none() {
+                                                if text.contains("error reaching upstream") {
+                                                    attempt += 1;
+                                                    if attempt < attempts {
+                                                        let color = super::get_color(&*current_chain.color);
+                                                        println!("          {}, {}:            {} {}",
+                                                            "Pool error".red(),
+                                                            "retrying".yellow(),
+                                                            adjusted_deadline.to_string().color(color),
+                                                            format!("({}/{})", attempt + 1, attempts).yellow(),
+                                                        );
+                                                        std::thread::sleep(std::time::Duration::from_secs(3));
+                                                        continue;
+                                                    }
+                                                }
+                                                failure_message = Some(text);
+                                                break;
+                                            } else if text.len() > 0 && failure_message.clone().is_some() && text != failure_message.clone().unwrap() {
+                                                // append new text to previous
+                                                failure_message = Some(format!("{}{}", failure_message.clone().unwrap(), text));
+                                                break;
+                                            }
+                                            info!("Submission failure [timeout] - DL={}", adjusted_deadline);
+
+                                            // check if this is a submission for the actual current chain we're mining
+                                            let actual_current_chain_index = get_current_chain_index();
+                                            let actual_current_chain_height = get_latest_chain_info(actual_current_chain_index).0;
+                                            attempt += 1;
+                                            let best_deadline = get_best_deadline(height, account_id);
+                                            if best_deadline < adjusted_deadline { // throw a fake confirm back to the miner since we have a better deadline than this one
+                                                let resp = SubmitNonceResponse {
+                                                    result: String::from("success"),
+                                                    deadline: Some(adjusted_deadline),
+                                                    reason: None
+                                                };
+                                                return resp.to_json();
+                                            } else {
+                                                if attempt < attempts {
+                                                    if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
+                                                        let color = super::get_color(&*current_chain.color);
+                                                        println!("          {}, {}:               {} {}",
+                                                            "Timeout".red(),
+                                                            "retrying".yellow(),
+                                                            adjusted_deadline.to_string().color(color),
+                                                            format!("({}/{})", attempt + 1, attempts).yellow(),
+                                                        );
+                                                    } else if is_block_requeued(chain_index, height) {
+                                                        // if the block is requeued, stop trying to resubmit the deadlines, we'll come back to them once higher priority blocks are completed
+                                                        failure_message = Some(String::from("Block requeued, will retry when higher priority blocks are finished."));
+                                                        break;
+                                                    }
+                                                } else {
+                                                    if failure_message.is_none() {
+                                                        let plural = match attempt {
+                                                            1 => "",
+                                                            _ => "s"
+                                                        };
+                                                        failure_message = Some(format!("No response from pool after {} attempt{}!", attempt, plural));
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                            std::thread::sleep(std::time::Duration::from_secs(3));
+                                            continue;
+                                        }
+                                    },
+                                    _ => {
                                         info!("Submission failure [timeout] - DL={}", adjusted_deadline);
 
                                         // check if this is a submission for the actual current chain we're mining
                                         let actual_current_chain_index = get_current_chain_index();
                                         let actual_current_chain_height = get_latest_chain_info(actual_current_chain_index).0;
+
                                         attempt += 1;
+                                        
                                         let best_deadline = get_best_deadline(height, account_id);
                                         if best_deadline < adjusted_deadline { // throw a fake confirm back to the miner since we have a better deadline than this one
                                             let resp = SubmitNonceResponse {
@@ -1384,7 +1440,7 @@ pub fn process_nonce_submission(
                                                         1 => "",
                                                         _ => "s"
                                                     };
-                                                    failure_message = Some(format!("No response from pool after trying {} time{}!", attempt, plural));
+                                                    failure_message = Some(format!("No response from pool after {} attempt{}!", attempt, plural));
                                                 }
                                                 break;
                                             }
@@ -1392,95 +1448,48 @@ pub fn process_nonce_submission(
                                         std::thread::sleep(std::time::Duration::from_secs(3));
                                         continue;
                                     }
-                                },
-                                _ => {
-                                    info!("Submission failure [timeout] - DL={}", adjusted_deadline);
-
-                                    // check if this is a submission for the actual current chain we're mining
-                                    let actual_current_chain_index = get_current_chain_index();
-                                    let actual_current_chain_height = get_latest_chain_info(actual_current_chain_index).0;
-
-                                    attempt += 1;
-                                    
-                                    let best_deadline = get_best_deadline(height, account_id);
-                                    if best_deadline < adjusted_deadline { // throw a fake confirm back to the miner since we have a better deadline than this one
-                                        let resp = SubmitNonceResponse {
-                                            result: String::from("success"),
-                                            deadline: Some(adjusted_deadline),
-                                            reason: None
-                                        };
-                                        return resp.to_json();
-                                    } else {
-                                        if attempt < attempts {
-                                            if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
-                                                let color = super::get_color(&*current_chain.color);
-                                                println!("          {}, {}:               {} {}",
-                                                    "Timeout".red(),
-                                                    "retrying".yellow(),
-                                                    adjusted_deadline.to_string().color(color),
-                                                    format!("({}/{})", attempt + 1, attempts).yellow(),
-                                                );
-                                            } else if is_block_requeued(chain_index, height) {
-                                                // if the block is requeued, stop trying to resubmit the deadlines, we'll come back to them once higher priority blocks are completed
-                                                failure_message = Some(String::from("Block requeued, will retry when higher priority blocks are finished."));
-                                                break;
-                                            }
-                                        } else {
-                                            if failure_message.is_none() {
-                                                let plural = match attempt {
-                                                    1 => "",
-                                                    _ => "s"
-                                                };
-                                                failure_message = Some(format!("No response from pool after trying {} time{}!", attempt, plural));
-                                            }
-                                            break;
-                                        }
-                                    }
-                                    std::thread::sleep(std::time::Duration::from_secs(3));
-                                    continue;
-                                }
-                            };
+                                };
+                            }
                         }
-                    }
-                    if deadline_accepted {
-                        let confirm_time = (Local::now() - start_time).num_milliseconds();
-                        info!("DL Confirmed - #{} | ID={} | DL={} (Unadjusted={}) | {}ms", block_height, account_id, adjusted_deadline, unadjusted_deadline, confirm_time);
-                        // print nonce confirmation
-                        super::print_nonce_accepted(chain_index, height, adjusted_deadline, confirm_time);
-                        // confirm deadline to miner
-                        let resp = SubmitNonceResponse {
-                            result: String::from("success"),
-                            deadline: Some(adjusted_deadline),
-                            reason: None,
-                        };
-                        return resp.to_json();
-                    } else { // deadline not accepted
-                        let reject_time = (Local::now() - start_time).num_milliseconds();
-                        info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {:?}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
-                        if failure_message.is_some() {
-                            // print confirmation failure
-                            super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time, attempt, attempts, failure_message.clone(), false);
-                            return failure_message.unwrap();
-                        } else {    // print confirmation failure
-                            super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time, attempt, attempts, failure_message.clone(), true);
+                        if deadline_accepted {
+                            let confirm_time = (Local::now() - start_time).num_milliseconds();
+                            info!("DL Confirmed - #{} | ID={} | DL={} (Unadjusted={}) | {}ms", block_height, account_id, adjusted_deadline, unadjusted_deadline, confirm_time);
+                            // print nonce confirmation
+                            super::print_nonce_accepted(chain_index, height, adjusted_deadline, confirm_time);
+                            // confirm deadline to miner
                             let resp = SubmitNonceResponse {
-                                result: String::from("failure"),
+                                result: String::from("success"),
                                 deadline: Some(adjusted_deadline),
-                                reason: Some(format!("Upstream failed to respond after {}/{} attempts to submit.", attempt, attempts)),
+                                reason: None,
                             };
                             return resp.to_json();
+                        } else { // deadline not accepted
+                            let reject_time = (Local::now() - start_time).num_milliseconds();
+                            info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {:?}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
+                            if failure_message.is_some() {
+                                // print confirmation failure
+                                super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time, attempt, attempts, failure_message.clone(), false);
+                                return failure_message.unwrap();
+                            } else {    // print confirmation failure
+                                super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time, attempt, attempts, failure_message.clone(), true);
+                                let resp = SubmitNonceResponse {
+                                    result: String::from("failure"),
+                                    deadline: Some(adjusted_deadline),
+                                    reason: Some(format!("Upstream failed to respond after {}/{} attempts to submit.", attempt, attempts)),
+                                };
+                                return resp.to_json();
+                            }
                         }
-                    }
-                } else {
-                    debug!("FAKE Confirm - #{} | DL={} (Unadjusted={})", block_height, adjusted_deadline, unadjusted_deadline);
-                    // confirm deadline to miner
-                    let resp = SubmitNonceResponse {
-                        result: String::from("success"),
-                        deadline: Some(adjusted_deadline),
-                        reason: None,
-                    };
-                    return resp.to_json();
+                    });
                 }
+                debug!("Confirmed DL => Miner @ {} - #{} | DL={} (Unadjusted={})", remote_addr, block_height, adjusted_deadline, unadjusted_deadline);
+                // confirm deadline to miner
+                let resp = SubmitNonceResponse {
+                    result: String::from("success"),
+                    deadline: Some(adjusted_deadline),
+                    reason: None,
+                };
+                return resp.to_json();
             }
             _ => {
                 if !current_chain.is_hdpool.unwrap_or_default()

@@ -84,6 +84,9 @@ pub struct PocChain {
     pub payout_address: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub submit_attempts: Option<u8>,
 }
 
@@ -171,6 +174,12 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub miner_offline_warnings: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submit_attempts: Option<u8>,
 }
 
 impl Config {
