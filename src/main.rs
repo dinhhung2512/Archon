@@ -1157,10 +1157,16 @@ fn print_nonce_rejected(
     let actual_current_chain_index = arbiter::get_current_chain_index();
     let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
     let attempt_num;
+    let attempts_num;
+    if attempts == 0 {
+        attempts_num = 1;
+    } else {
+        attempts_num = attempts;
+    }
     if attempt == 0 {
         attempt_num = 1;
-    } else if attempt > attempts {
-        attempt_num = attempts;
+    } else if attempt > attempts_num {
+        attempt_num = attempts_num;
     } else {
         attempt_num = attempt;
     }
@@ -1168,8 +1174,8 @@ fn print_nonce_rejected(
         let current_chain = get_chain_from_index(chain_index);
         let color = get_color(&*current_chain.color);
         let rejected_text = match is_timeout {
-            true =>  format!("Timeout ({}/{}): ", attempt_num, attempts),
-            false => format!("Rejected ({}/{}):", attempt_num, attempts),
+            true =>  format!("Timeout ({}/{}): ", attempt_num, attempts_num),
+            false => format!("Rejected ({}/{}):", attempt_num, attempts_num),
         };
         if is_timeout {
                 println!("            {}                {}{}",

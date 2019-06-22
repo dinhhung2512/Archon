@@ -720,7 +720,9 @@ fn is_block_requeued(chain_index: u8, block_height: u32) -> bool {
             }
             false
         }
-        _ => false
+        _ => {
+            false
+        }
     }
 }
 
@@ -825,14 +827,16 @@ pub fn get_current_chain_mining_info(index: u8) -> Option<(MiningInfo, DateTime<
 }
 
 pub fn get_chain_index_from_height(height: u32) -> (bool, u8) {
-    for inner in &crate::CONF.poc_chains {
-        for chain in inner {
-            if chain.enabled.unwrap_or(true) {
-                let index = super::get_chain_index(&*chain.url, &*chain.name);
-                let (current_height, _) = get_latest_chain_info(index);
-                if current_height == height || (height > 0 && current_height == height - 1) {
-                    trace!("Matched Block #{} to Chain #{}", height, index);
-                    return (true, index);
+    if height > 0 {
+        for inner in &crate::CONF.poc_chains {
+            for chain in inner {
+                if chain.enabled.unwrap_or(true) {
+                    let index = super::get_chain_index(&*chain.url, &*chain.name);
+                    let (current_height, _) = get_latest_chain_info(index);
+                    if current_height == height || (height > 0 && current_height == height - 1) {
+                        trace!("Matched Block #{} to Chain #{}", height, index);
+                        return (true, index);
+                    }
                 }
             }
         }
@@ -1140,7 +1144,7 @@ pub fn process_nonce_submission(
     if height == 0 {
         if !chain_matched {
             chain_index = get_current_chain_index();
-            }
+        }
         height = match get_latest_chain_info(chain_index) {
             (height, _) => height,
         };
@@ -1371,12 +1375,8 @@ pub fn process_nonce_submission(
                                                     );
                                                 } else if is_block_requeued(chain_index, height) {
                                                     // if the block is requeued, stop trying to resubmit the deadlines, we'll come back to them once higher priority blocks are completed
-                                                    let resp = SubmitNonceResponse {
-                                                        result: String::from("failure"),
-                                                        deadline: Some(adjusted_deadline),
-                                                        reason: Some(String::from("Block requeued, will retry when higher priority blocks are finished.")),
-                                                    };
-                                                    return resp.to_json();
+                                                    failure_message = Some(String::from("Block requeued, will retry when higher priority blocks are finished."));
+                                                    break;
                                                 }
                                             } else {
                                                 if failure_message.is_none() {
@@ -1422,12 +1422,8 @@ pub fn process_nonce_submission(
                                                 );
                                             } else if is_block_requeued(chain_index, height) {
                                                 // if the block is requeued, stop trying to resubmit the deadlines, we'll come back to them once higher priority blocks are completed
-                                                let resp = SubmitNonceResponse {
-                                                    result: String::from("failure"),
-                                                    deadline: Some(adjusted_deadline),
-                                                    reason: Some(String::from("Block requeued, will retry when higher priority blocks are finished.")),
-                                                };
-                                                return resp.to_json();
+                                                failure_message = Some(String::from("Block requeued, will retry when higher priority blocks are finished."));
+                                                break;
                                             }
                                         } else {
                                             if failure_message.is_none() {
