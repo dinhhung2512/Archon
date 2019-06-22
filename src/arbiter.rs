@@ -34,7 +34,7 @@ pub struct HDPoolSubmitNonceInfo {
 
 fn create_chain_nonce_submission_client(chain_index: u8) {
     // get current chain
-    let chain = super::get_chain_from_index(chain_index).unwrap();
+    let chain = super::get_chain_from_index(chain_index);
     let mut default_headers = header::HeaderMap::new();
     if chain.miner_alias.is_some() {
         default_headers.insert("x-mineralias", get_header_value(chain.miner_alias.unwrap()));
@@ -65,13 +65,17 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
             )),
         );
         default_headers.insert("X-Miner", get_header_value(app_name_ver.clone()));
+    } else {
+        if chain.payout_address.is_some() && chain.account_key.is_none() {
+            default_headers.insert("X-Account", get_header_value(chain.payout_address.unwrap()));
         }
+    }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
     chain_nonce_submission_clients.insert(
         chain_index,
         reqwest::Client::builder()
             .default_headers(default_headers)
-            .timeout(std::time::Duration::from_secs(3))
+            .timeout(std::time::Duration::from_secs(chain.timeout.unwrap_or(5) as u64))
             .build()
             .unwrap(),
     );
@@ -103,7 +107,7 @@ pub fn thread_arbitrate() {
                 create_chain_nonce_submission_client(index);
                 thread::spawn(move || {
                     thread_get_mining_info(
-                        reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap(),
+                        reqwest::Client::builder().timeout(std::time::Duration::from_secs(chain.timeout.unwrap_or(5) as u64)).build().unwrap(),
                         chain.clone(),
                         new_sender,
                     );
@@ -331,12 +335,17 @@ fn thread_get_mining_info(
     sender: std_mpsc::Sender<MiningInfoPollingResult>,
 ) {
     let mut url = String::from(&*chain.url);
-    url.push_str("/burst?requestType=getMiningInfo");
+    if chain.is_boomcoin.unwrap_or(false) {
+        url.push_str("/boom?requestType=getMiningInfo");
+    } else {
+        url.push_str("/burst?requestType=getMiningInfo");
+    }
     let mut last_block_height = 0 as u32;
     let mut last_generation_signature = String::from("");
     let mut request_failure = false;
     let mut last_request_success: DateTime<Local> = Local::now();
     let mut last_outage_reminder_sent: DateTime<Local> = Local::now();
+    let mut num_failures_since_success = 0u16;
     
     // setup mpsc channel to receive signal when new mining info is received from HDPool websocket
     //let (hdpool_mining_info_sender, hdpool_mining_info_receiver) = std_mpsc::channel();
@@ -374,7 +383,11 @@ fn thread_get_mining_info(
             },
             false => {
                 let mut url = String::from(chain.clone().url);
-                url.push_str("/burst?requestType=getMiningInfo");
+                if chain.is_boomcoin.unwrap_or(false) {
+                    url.push_str("/boom?requestType=getMiningInfo");
+                } else {
+                    url.push_str("/burst?requestType=getMiningInfo");
+                }
                 if chain.is_hpool.unwrap_or_default() && chain.account_key.is_some() {
                     let miner_name = match chain.miner_name.clone() {
                         Some(miner_name) => {
@@ -460,6 +473,7 @@ fn thread_get_mining_info(
                 let outage_duration_str = super::format_timespan(
                     outage_duration.num_seconds() as u64,
                 );
+                num_failures_since_success = 0;
                 println!("  {} {} {}",
                     super::get_time().white(),
                     format!("{}", &*chain.name).color(&*chain.color),
@@ -492,7 +506,7 @@ fn thread_get_mining_info(
             drop(_mining_info);
         } else {
             if !is_hdpool {
-                if !request_failure {
+                if !request_failure && num_failures_since_success > 5 {
                     request_failure = true;
                     last_outage_reminder_sent = Local::now();
                     println!("  {} {} {}",
@@ -501,7 +515,7 @@ fn thread_get_mining_info(
                         "Could not retrieve mining info!".red()
                     );
                     info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, mining_info_response);
-                } else {
+                } else if num_failures_since_success > 5 {
                     let outage_duration = Local::now() - last_request_success;
                     let last_reminder = Local::now() - last_outage_reminder_sent;
                     if last_reminder.num_seconds()
@@ -517,6 +531,8 @@ fn thread_get_mining_info(
                         );
                         info!("{} - Last: {} - Outage continues, time unavailable so far: {}", &*chain.name, last_block_height, outage_duration_str);
                     }
+                } else {
+                    num_failures_since_success += 1;
                 }
             }
         }
@@ -562,7 +578,7 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
         &*mining_info_polling_result.chain.name,
     );
     let current_chain_index = get_current_chain_index();
-    let current_chain = super::get_chain_from_index(current_chain_index).unwrap();
+    let current_chain = super::get_chain_from_index(current_chain_index);
     // get currently mining block height before we change it
     let current_block_height = match super::get_current_mining_info() {
         Some(mi) => mi.height,
@@ -642,7 +658,7 @@ fn process_new_block(mining_info_polling_result: &MiningInfoPollingResult) {
 
 fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info_polling_result: Option<MiningInfoPollingResult>) -> LastBlockInfo {
     let current_chain_index = get_current_chain_index();
-    let current_chain = super::get_chain_from_index(current_chain_index).unwrap();
+    let current_chain = super::get_chain_from_index(current_chain_index);
     let (requeued_height, requeued_time) = get_queued_chain_info(current_chain_index);
     let interrupted_by_name;
     let interrupted_by_height;
@@ -653,7 +669,7 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
         },
         None => {
             match (super::get_chain_from_index(interrupted_by_index), get_current_chain_mining_info(interrupted_by_index)) {
-                (Some(interrupted_by_chain), Some(interrupted_by_mining_info)) => {
+                (interrupted_by_chain, Some(interrupted_by_mining_info)) => {
                     interrupted_by_name = interrupted_by_chain.clone().name;
                     interrupted_by_height = interrupted_by_mining_info.0.clone().height;
                 }
@@ -677,9 +693,11 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
         chain_queue_status_map.insert(current_chain_index, (requeued_height - 1, requeued_time));
         let mut block_start_printed_map = crate::BLOCK_START_PRINTED.lock().unwrap();
         block_start_printed_map.insert(current_chain_index, requeued_height - 1);
-        // update the number of times this block height has been requeued
-        let mut chain_requeue_times_map = crate::CHAIN_REQUEUE_TIMES.lock().unwrap();
-        chain_requeue_times_map.insert(current_chain_index, (requeued_height, times_requeued + 1));
+        // update the number of times this block height has been requeued if its run time is > 0
+        if last_block_time > 0 {
+            let mut chain_requeue_times_map = crate::CHAIN_REQUEUE_TIMES.lock().unwrap();
+            chain_requeue_times_map.insert(current_chain_index, (requeued_height, times_requeued + 1));
+        }
         if current_chain.maximum_requeue_times.is_none() {
             info!("INTERRUPT & REQUEUE BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
             LastBlockInfo::Requeued(None, last_block_time, current_chain_index)
@@ -690,6 +708,19 @@ fn requeue_current_block(do_requeue: bool, interrupted_by_index: u8, mining_info
     } else {
         info!("INTERRUPT BLOCK - {} #{} => {} #{}", &*current_chain.name, requeued_height, &*interrupted_by_name, interrupted_by_height);
         LastBlockInfo::Interrupted(last_block_time, current_chain_index)
+    }
+}
+
+fn is_block_requeued(chain_index: u8, block_height: u32) -> bool {
+    let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
+    match chain_queue_status_map.get(&chain_index) {
+        Some((height, _)) => {
+            if *height == block_height {
+                return true;
+            }
+            false
+        }
+        _ => false
     }
 }
 
@@ -840,7 +871,7 @@ fn any_blocks_queued() -> (bool, i8, u8) {
         }
     }
     if chain_indexes_with_queued_blocks.len() > 0 {
-        let current_chain = super::get_chain_from_index(current_chain_index).unwrap();
+        let current_chain = super::get_chain_from_index(current_chain_index);
         if crate::CONF.priority_mode.unwrap_or(true) {
             let mut highest_priority_chain_index = 0u8;
             let mut highest_priority = u8::max_value();
@@ -896,7 +927,7 @@ pub fn thread_arbitrate_queue() {
                                 start_mining_chain(index, Some(LastBlockInfo::Completed(last_block_time, current_chain_index)));
                             } else if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
                                 let current_chain_index = get_current_chain_index();
-                                let current_chain = super::get_chain_from_index(current_chain_index).unwrap();
+                                let current_chain = super::get_chain_from_index(current_chain_index);
                                 start_mining_chain(index, Some(requeue_current_block(current_chain.requeue_interrupted_blocks.unwrap_or(true), index, None)));
                             } // else do nothing
                         }
@@ -927,34 +958,30 @@ pub fn thread_arbitrate_queue() {
 
 fn start_mining_chain(index: u8, last_block_info: Option<super::LastBlockInfo>) {
     // get chain
-    match super::get_chain_from_index(index) {
-        Some(chain) => {
-            // get access to chain mining infos
-            match get_current_chain_mining_info(index) {
-                Some((mining_info, _)) => {
-                    if mining_info.base_target > 0 {
-                        // print block info
-                        super::print_block_started(
-                            index,
-                            mining_info.height,
-                            mining_info.base_target,
-                            String::from(&*mining_info.generation_signature),
-                            last_block_info,
-                        );
-                        info!("START BLOCK - Chain #{} - Block #{} - Priority {} | {} | {}", index, mining_info.height, chain.priority, &*chain.name, &*chain.url);
-                        // set last mining info
-                        *crate::LAST_MINING_INFO.lock().unwrap() = super::get_current_mining_info_json();
-                        // set current chain index
-                        *crate::CURRENT_CHAIN_INDEX.lock().unwrap() = index;
-                        // update the queue status for this chain
-                        let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
-                        chain_queue_status_map.insert(index, (mining_info.height, Local::now()));
-                    }
-                }
-                _ => {}
-            };
+    let chain = super::get_chain_from_index(index);
+    // get access to chain mining infos
+    match get_current_chain_mining_info(index) {
+        Some((mining_info, _)) => {
+            if mining_info.base_target > 0 {
+                // print block info
+                super::print_block_started(
+                    index,
+                    mining_info.height,
+                    mining_info.base_target,
+                    String::from(&*mining_info.generation_signature),
+                    last_block_info,
+                );
+                info!("START BLOCK - Chain #{} - Block #{} - Priority {} | {} | {}", index, mining_info.height, chain.priority, &*chain.name, &*chain.url);
+                // set last mining info
+                *crate::LAST_MINING_INFO.lock().unwrap() = super::get_current_mining_info_json();
+                // set current chain index
+                *crate::CURRENT_CHAIN_INDEX.lock().unwrap() = index;
+                // update the queue status for this chain
+                let mut chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
+                chain_queue_status_map.insert(index, (mining_info.height, Local::now()));
+            }
         }
-        None => {}
+        _ => {}
     };
 }
 
@@ -1118,7 +1145,7 @@ pub fn process_nonce_submission(
             (height, _) => height,
         };
     }
-    let current_chain = super::get_chain_from_index(chain_index).unwrap();
+    let current_chain = super::get_chain_from_index(chain_index);
     let base_target = match get_current_chain_mining_info(chain_index) {
         Some((mining_info, _)) => mining_info.base_target,
         _ => 0,
@@ -1141,7 +1168,7 @@ pub fn process_nonce_submission(
                 }
                 let mut id_override = false;
                 use crate::TargetDeadlineType;
-                let target_deadline = match super::get_target_deadline(Some(account_id), base_target, chain_index, current_chain.clone()) {
+                let target_deadline = match super::get_target_deadline(Some(account_id), base_target, chain_index, Some(current_chain.clone())) {
                     TargetDeadlineType::ConfigOverriddenByID(tdl) => {
                         id_override = true;
                         tdl
@@ -1196,8 +1223,11 @@ pub fn process_nonce_submission(
                         Some(map) => {
                             for id_and_passphrase in map {
                                 if id_and_passphrase.0 == account_id {
+                                    extern crate url;
+                                    use url::form_urlencoded::{byte_serialize};
+                                    let urlencoded: String = byte_serialize(&*id_and_passphrase.1.as_bytes()).collect();
                                     passphrase_str.push_str(
-                                        format!("&secretPhrase={}", id_and_passphrase.1).as_str(),
+                                        format!("&secretPhrase={}", urlencoded).as_str(),
                                     );
                                     passphrase_set = true;
                                     break;
@@ -1211,14 +1241,15 @@ pub fn process_nonce_submission(
                         let resp = SubmitNonceResponse{
                             result: String::from("failure"),
                             deadline: None,
-                            reason: Some(format!("No passphrase for account ID [{}] was specified in Archon configuration for solo mining burst.", account_id)),
+                            reason: Some(format!("No passphrase for account ID [{}] was specified in Archon configuration for solo mining Burst/Boom! Check your spacing in the config file! There is an example at https://github.com/Bloodreaver/Archon#all-configuration-options-for-poc-chains", account_id)),
                         };
                         return resp.to_json();
                     }
                 }
                 if send_deadline {
                     let mut attempt = 0;
-                    while attempt < 5 && !deadline_accepted {
+                    let attempts = current_chain.submit_attempts.unwrap_or(5);
+                    while ((attempt == 0 && attempts == 0) || attempt < attempts) && !deadline_accepted {
                         // check if chain is HDPool Direct
                         if (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some() {
                             // get sender
@@ -1246,6 +1277,7 @@ pub fn process_nonce_submission(
                                             Err(why) => {
                                                 debug!("HDP-WS - Receiver failed to receive submission response signal: {}", why);
                                                 attempt += 1;
+                                                std::thread::sleep(std::time::Duration::from_secs(3));
                                                 continue;
                                             }
                                         }
@@ -1263,11 +1295,21 @@ pub fn process_nonce_submission(
                                 || current_chain.is_hpool.unwrap_or_default()
                                 || current_chain.is_bhd.unwrap_or_default()
                                 || current_chain.is_pool.unwrap_or_default() {
-                                url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
+                                if current_chain.is_boomcoin.unwrap_or(false) {
+                                    url.push_str(format!("/boom?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
                                 height, account_id, nonce, unadjusted_deadline).as_str());
-                            } else { // solo mining burst
-                                url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
+                                } else {
+                                    url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
+                                height, account_id, nonce, unadjusted_deadline).as_str());
+                                }
+                            } else { // solo mining burst / boom
+                                if current_chain.is_boomcoin.unwrap_or(false) {
+                                    url.push_str(format!("/boom?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
                                 height, account_id, nonce, passphrase_str).as_str());
+                                } else {
+                                    url.push_str(format!("/burst?requestType=submitNonce&blockheight={}&accountId={}&nonce={}{}",
+                                height, account_id, nonce, passphrase_str).as_str());
+                                }
                             }
                             _deadline_sent = true;
                             info!("DL Send - #{} | ID={} | DL={} (Unadjusted={})", block_height, account_id, adjusted_deadline, unadjusted_deadline);
@@ -1275,24 +1317,130 @@ pub fn process_nonce_submission(
                             match forward_nonce_submission(chain_index, url.as_str(), user_agent_header, mining_headers.clone(), current_chain.miner_name.clone(), true, current_chain.is_hpool.unwrap_or_default(), current_chain.append_version_to_miner_name.unwrap_or_default())
                             {
                                 Some(text) => {
-                                    debug!("DL Submit Response: {}", text);
+                                    debug!("DL Submit Response ({}): {}", adjusted_deadline, text);
                                     if text.contains("success")
                                         && text.contains(format!("{}", adjusted_deadline).as_str())
                                     {
                                         deadline_accepted = true;
                                     } else {
                                         if text.len() > 0 && failure_message.clone().is_none() {
+                                            if text.contains("error reaching upstream") || text.contains("Deadline exceeds maximum allowed deadline") {
+                                                attempt += 1;
+                                                if attempt < attempts {
+                                                    let color = super::get_color(&*current_chain.color);
+                                                    println!("          {}, {}:            {} {}",
+                                                        "Pool error".red(),
+                                                        "retrying".yellow(),
+                                                        adjusted_deadline.to_string().color(color),
+                                                        format!("({}/{})", attempt + 1, attempts).yellow(),
+                                                    );
+                                                    std::thread::sleep(std::time::Duration::from_secs(3));
+                                                    continue;
+                                                }
+                                            }
                                             failure_message = Some(text);
+                                            break;
                                         } else if text.len() > 0 && failure_message.clone().is_some() && text != failure_message.clone().unwrap() {
                                             // append new text to previous
                                             failure_message = Some(format!("{}{}", failure_message.clone().unwrap(), text));
+                                            break;
                                         }
+                                        info!("Submission failure [timeout] - DL={}", adjusted_deadline);
+
+                                        // check if this is a submission for the actual current chain we're mining
+                                        let actual_current_chain_index = get_current_chain_index();
+                                        let actual_current_chain_height = get_latest_chain_info(actual_current_chain_index).0;
                                         attempt += 1;
+                                        let best_deadline = get_best_deadline(height, account_id);
+                                        if best_deadline < adjusted_deadline { // throw a fake confirm back to the miner since we have a better deadline than this one
+                                            let resp = SubmitNonceResponse {
+                                                result: String::from("success"),
+                                                deadline: Some(adjusted_deadline),
+                                                reason: None
+                                            };
+                                            return resp.to_json();
+                                        } else {
+                                            if attempt < attempts {
+                                                if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
+                                                    let color = super::get_color(&*current_chain.color);
+                                                    println!("          {}, {}:               {} {}",
+                                                        "Timeout".red(),
+                                                        "retrying".yellow(),
+                                                        adjusted_deadline.to_string().color(color),
+                                                        format!("({}/{})", attempt + 1, attempts).yellow(),
+                                                    );
+                                                } else if is_block_requeued(chain_index, height) {
+                                                    // if the block is requeued, stop trying to resubmit the deadlines, we'll come back to them once higher priority blocks are completed
+                                                    let resp = SubmitNonceResponse {
+                                                        result: String::from("failure"),
+                                                        deadline: Some(adjusted_deadline),
+                                                        reason: Some(String::from("Block requeued, will retry when higher priority blocks are finished.")),
+                                                    };
+                                                    return resp.to_json();
+                                                }
+                                            } else {
+                                                if failure_message.is_none() {
+                                                    let plural = match attempt {
+                                                        1 => "",
+                                                        _ => "s"
+                                                    };
+                                                    failure_message = Some(format!("No response from pool after trying {} time{}!", attempt, plural));
+                                                }
+                                                break;
+                                            }
+                                        }
+                                        std::thread::sleep(std::time::Duration::from_secs(3));
                                         continue;
                                     }
                                 },
                                 _ => {
+                                    info!("Submission failure [timeout] - DL={}", adjusted_deadline);
+
+                                    // check if this is a submission for the actual current chain we're mining
+                                    let actual_current_chain_index = get_current_chain_index();
+                                    let actual_current_chain_height = get_latest_chain_info(actual_current_chain_index).0;
+
                                     attempt += 1;
+                                    
+                                    let best_deadline = get_best_deadline(height, account_id);
+                                    if best_deadline < adjusted_deadline { // throw a fake confirm back to the miner since we have a better deadline than this one
+                                        let resp = SubmitNonceResponse {
+                                            result: String::from("success"),
+                                            deadline: Some(adjusted_deadline),
+                                            reason: None
+                                        };
+                                        return resp.to_json();
+                                    } else {
+                                        if attempt < attempts {
+                                            if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
+                                                let color = super::get_color(&*current_chain.color);
+                                                println!("          {}, {}:               {} {}",
+                                                    "Timeout".red(),
+                                                    "retrying".yellow(),
+                                                    adjusted_deadline.to_string().color(color),
+                                                    format!("({}/{})", attempt + 1, attempts).yellow(),
+                                                );
+                                            } else if is_block_requeued(chain_index, height) {
+                                                // if the block is requeued, stop trying to resubmit the deadlines, we'll come back to them once higher priority blocks are completed
+                                                let resp = SubmitNonceResponse {
+                                                    result: String::from("failure"),
+                                                    deadline: Some(adjusted_deadline),
+                                                    reason: Some(String::from("Block requeued, will retry when higher priority blocks are finished.")),
+                                                };
+                                                return resp.to_json();
+                                            }
+                                        } else {
+                                            if failure_message.is_none() {
+                                                let plural = match attempt {
+                                                    1 => "",
+                                                    _ => "s"
+                                                };
+                                                failure_message = Some(format!("No response from pool after trying {} time{}!", attempt, plural));
+                                            }
+                                            break;
+                                        }
+                                    }
+                                    std::thread::sleep(std::time::Duration::from_secs(3));
                                     continue;
                                 }
                             };
@@ -1302,12 +1450,7 @@ pub fn process_nonce_submission(
                         let confirm_time = (Local::now() - start_time).num_milliseconds();
                         info!("DL Confirmed - #{} | ID={} | DL={} (Unadjusted={}) | {}ms", block_height, account_id, adjusted_deadline, unadjusted_deadline, confirm_time);
                         // print nonce confirmation
-                        super::print_nonce_accepted(
-                            chain_index,
-                            height,
-                            adjusted_deadline,
-                            confirm_time,
-                        );
+                        super::print_nonce_accepted(chain_index, height, adjusted_deadline, confirm_time);
                         // confirm deadline to miner
                         let resp = SubmitNonceResponse {
                             result: String::from("success"),
@@ -1318,15 +1461,16 @@ pub fn process_nonce_submission(
                     } else { // deadline not accepted
                         let reject_time = (Local::now() - start_time).num_milliseconds();
                         info!("DL Rejected - #{} | ID={} | DL={} (Unadjusted={}) | {}ms - Response: {:?}", block_height, account_id, adjusted_deadline, unadjusted_deadline, reject_time, failure_message);
-                        // print confirmation failure
-                        super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time);
                         if failure_message.is_some() {
+                            // print confirmation failure
+                            super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time, attempt, attempts, failure_message.clone(), false);
                             return failure_message.unwrap();
-                        } else {
+                        } else {    // print confirmation failure
+                            super::print_nonce_rejected(chain_index, height, adjusted_deadline, reject_time, attempt, attempts, failure_message.clone(), true);
                             let resp = SubmitNonceResponse {
                                 result: String::from("failure"),
                                 deadline: Some(adjusted_deadline),
-                                reason: Some(String::from("Upstream failed to respond after 5 attempts to submit.")),
+                                reason: Some(format!("Upstream failed to respond after {}/{} attempts to submit.", attempt, attempts)),
                             };
                             return resp.to_json();
                         }

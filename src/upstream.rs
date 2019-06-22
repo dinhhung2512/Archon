@@ -10,8 +10,8 @@ use std::string::*;
 pub struct MiningInfo {
     #[serde(deserialize_with = "string_or_number_to_u32")]
     pub height: u32,
-    #[serde(deserialize_with = "string_or_number_to_u32")]
-    pub base_target: u32,
+    #[serde(deserialize_with = "string_or_number_to_u64", default = "u64::max_value")]
+    pub base_target: u64,
     pub generation_signature: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_processing_time: Option<u8>,

@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/Bloodreaver/Archon.svg?branch=master)](https://travis-ci.org/Bloodreaver/Archon)
 <img align="right" src="https://puu.sh/CXnpV/bbc0f8d5b5.png">
 # Archon
-A collision free, multi-chain proof of capacity mining proxy.
+A collision free, multi-chain proof of capacity mining proxy which supports BURSTcoin, BHD/BitcoinHD and Boomcoin.
 
 ## Contents:
 - [What Archon does](#what-archon-does)
@@ -12,6 +12,7 @@ A collision free, multi-chain proof of capacity mining proxy.
 - [All Configuration Options for PoC Chains](#all-configuration-options-for-poc-chains)
 - [Global Configuration Options](#global-configuration-options)
 - [Sample configuration file](#sample-configuration-file)
+- [Troubleshooting](#troubleshooting)
 - [Donations](#donations)
 
 ## What Archon does:
@@ -23,13 +24,16 @@ A collision free, multi-chain proof of capacity mining proxy.
   - Can run in *priority* __or__ *first in, first out* queuing modes
   - Can interrupt lower priority blocks (toggleable)
   - Compatible with HDPool mining (directly, without the use of HDProxy or another program)
+  - Compatible with BurstNeon, Foxy-X, Nogrod/goburstpool, HPool and BATS pool software
+  - Compatible with BHD, Burst and Boom wallet software for solo mining
   - [Customizable per-chain settings](#all-configuration-options-for-poc-chains):
-    - Dynamic Deadlines (auto adjust for network difficulty based on total plot capacity)
+    - Dynamic Deadlines (auto adjust for network difficulty based on total plot capacity) with customisable submit probability
     - Target deadline (for the entire chain)
     - Target deadline overrides (per ID)
-    - Define passphrases for solo burst mining (per ID)
-    - Requeue interrupted blocks (toggleable)
+    - Define passphrases for solo burst/boom mining (per ID)
+    - Requeue interrupted blocks (toggleable with customisable maximum)
     - Adjustable *getMiningInfo* interval
+    - Adjustable timeout and number of submission attempts
 
 ## What Archon does not do:
 - Mine
@@ -115,8 +119,29 @@ pocChains:
     priority: 5
     url: "http://localhost:8125"
     numericIdToPassphrase:
-      12345678901234567890: passphrase for this numeric id goes here
+      12345678901234567890: passphrase for id 12345678901234567890 goes here
+      23456789012345678901: "passphrase for id 23456789012345678901 goes here"
+#^^^^^ spacing here is very important!
     color: cyan
+
+# Boom Pool mining via boom.voiplanparty.com
+  - name: Seventh Chain
+    priority: 6
+    url: "http://boom.voiplanparty.com:80"
+    isPool: true
+    color: blue
+
+# Boom Solo mining
+#  (You must have a Boom wallet running on the same machine as Archon with these settings!)
+  - name: Eighth Chain
+    priority: 7
+    url: "http://localhost:8125" # default boom wallet port, if you changed the wallet port you'll need to change it here too
+    numericIdToPassphrase:
+      12345678901234567890: passphrase for id 12345678901234567890 goes here
+      23456789012345678901: "passphrase for id 23456789012345678901 goes here"
+#^^^^^ spacing here is very important!
+    color: blue
+    isBoomcoin: true
 ```
 
 ## All Configuration Options for PoC Chains
@@ -155,6 +180,9 @@ If you need more control over your chains, you can add any of these parameters t
     - If the chain is for HPool or HDPool, Archon will attempt to retrieve your device's hostname, and report your miner as `<HOSTNAME> via Archon` if successful - where `<HOSTNAME>` is the name of your computer or device. If Archon cannot retrieve the hostname, your miner will be reported simply as `Archon`.
     - For other chains, Archon will set the miner name as `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>` to avoid potentially exposing your identity to the public.
   - *Note: The `User-Agent` header that Archon sends with submissions will always be `<MINING SOFTWARE USER AGENT> via Archon v<VERSION>`, you cannot customise that. This is only intended to give you a way to control the name that appears in your upstream pool/proxy web interface, for monitoring purposes, if it is supported.*
+- `isBoomcoin` *`Boolean`*
+  - Optional. Default = false.
+  - Required for mining solo Boomcoin, or any upstream which uses the /boom url subdirectory instead of /burst.
 - `appendVersionToMinerName` *`Boolean`*
   - Optional. Default = false
   - If this is enabled, Archon will automatically append the current version of itself to your `minerName`.
@@ -182,8 +210,14 @@ If you need more control over your chains, you can add any of these parameters t
   - Use this if this chain is for solo mining BURST.
   - Example format:
 ```yaml
-numericIdToPassphrase:
-  12345678901234567890: passphrase for this numeric id goes here
+pocChains:
+  - name: Example Chain With Passphrase
+    url: "http://some.mining.pool:1234" # not a real mining pool
+    color: white
+    numericIdToPassphrase:
+      12345678901234567890: passphrase for id 12345678901234567890 goes here
+      23456789012345678901: "passphrase for id 23456789012345678901 goes here"
+#^^^^^ note spacing! very important!
 ```
 - `numericIdToTargetDeadline` *`HashMap<Unsigned 64-bit Integer, Unsigned 64-bit Integer>`*
   - Optional.
@@ -231,6 +265,15 @@ numericIdToTargetDeadline:
   - Specify a maximum number of times that a block for this chain will be requeued.
   - Only used if Archon is running in priority mode with block interrupting enabled (which is the default), and `requeueInterruptedBlocks` has not been disabled for this chain.
     - Use case: For something like mining a testnet where you don't want to continually mine the same block if it keeps getting interrupted by a higher priority chain.
+- `payoutAddress` *`String`*
+  - Optional, but Required for Foxy-Pool type upstreams.
+  - Sends the specified value as an `X-Account` header for Foxy-Pool upstreams to use.
+- `timeout` *`Unsigned 8-bit Integer`*
+  - Optional. Default = 5 seconds.
+  - Specify a timeout duration for this chain, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` chain configuration setting.
+- `submitAttempts` *`Unsigned 8-bit Integer`*
+  - Optional. Default = 5 attempts.
+  - Specify a maximum amount of times that Archon will attempt to submit a deadline before giving up.
 
 ## Global Configuration Options
 Use these configuration options to control Archon's behavior.
@@ -401,6 +444,26 @@ pocChains:
     targetDeadline: 7200
     color: yellow
 ```
+
+## Troubleshooting
+You can always ask for help in the [Archon Discord](https://discord.gg/ZdVbrMn), just PLEASE try to read up a little first, as it's VERY annoying constantly being bothered by people who can't be bothered to help themselves before asking a question which could've been answered by reading the readme!
+
+### Frequently Asked Questions:
+- Why do I get the error `Required parameters for nonce submission were not present.`?
+  - The most common cause for this error is a passphrase being defined in Scavenger configuration. When a passphrase is set in Scavenger, it assumes you are solo mining directly to a burst/boom wallet (even if it's just the default passphrase which you don't use) and will not send the deadline value to Archon, which Archon requires.
+  - TL;DR: Remove any passphrases from your Scavenger configuration files. The first line in your Scavenger config.yaml file should be `plot_dirs:`.
+- Why is my capacity not showing properly?
+  - This is a tricky one. Archon tracks your miner's capacity by the submission IP. If you have more than one miner submitting from the same IP address, their capacities will overwrite each other constantly. If you are mining with Scavenger, you also need to have the `send_proxy_details` configuration option enabled in Scavenger, or it won't send your capacity to Archon.
+  - If you've definitely set the `send_proxy_details` to `true` in Scavenger **(and restarted it)** and still aren't seeing your capacity, ask for help in the [Archon Discord](https://discord.gg/ZdVbrMn).
+- How do I set up mining [currency name]?
+  - I've provided numerous examples above in the [Defining your mining chains](#defining-your-mining-chains) section of this readme.
+  - If you still can't figure it out, ask for help in the [Archon Discord](https://discord.gg/ZdVbrMn).
+- Archon keeps starting a block from another chain before some of my miners have finished mining it! Why?
+  - The `gracePeriod` setting tells Archon how long it needs to wait for miners to finish scanning, before it sends a lower priority block. If Archon is sending a new block before some of your miners have finished scanning the old block, your grace period should be increased.
+  - TL;DR: This happens because your `gracePeriod` setting is too short. Check the miners connected to Archon, see how long they mine for. Set your `gracePeriod` setting to be *slightly more* than that time (eg if your slowest miner takes **30 seconds** to scan on average, set your `gracePeriod` to `35`).
+- Why isn't there a Web UI?
+  - There is, it's just under development at the moment. When it's all working and I'm happy with it, I'll release it! :)
+
 ## Donations
 Donations are much appreciated, you can use any of the following:
 - BURST

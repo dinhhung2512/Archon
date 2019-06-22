@@ -56,7 +56,7 @@ lazy_static! {
         let chain_mining_infos = HashMap::new();
         Arc::new(Mutex::new(chain_mining_infos))
     };
-    static ref MINING_INFO_CACHE: Arc<Mutex<HashMap<u8, (u32, String)>>> = {
+    static ref MINING_INFO_CACHE: Arc<Mutex<HashMap<u8, (u32, String, u64)>>> = {
         let mining_info_cached_map = HashMap::new();
         Arc::new(Mutex::new(mining_info_cached_map))
     };
@@ -291,8 +291,18 @@ fn main() {
                     }
                     // check if URL is present if this chain is NOT for HDPool Direct
                     if !((chain.is_hdpool.unwrap_or_default() || chain.is_hdpool_eco.unwrap_or_default()) && chain.account_key.is_some()) && chain.url.clone().len() == 0 {
-                        invalid_url_warnings.push_str(format!("    Chain \"{}\" has no URL set when one is required!\n", &*chain.name).as_str());
+                        invalid_url_warnings.push_str(format!("    Chain \"{}\" has no URL set when one is required! If you are trying to use HDPool direct mining, ensure your config names are correct, as they are CaSe SeNsItIvE!\n", &*chain.name).as_str());
+                    }
+                    // check if both payout address and account key are set
+                    if chain.account_key.is_some() && chain.payout_address.is_some() {
+                        error!(r#"The chain "{}" has both an account key and payout address defined. If mining to foxy pool, only set Payout Address! If mining to HDPool / HPool / BPool, only set Account Key!"#, &*chain.name);
+                        println!("\n  {}", format!(r#"FATAL ERROR: The chain "{}" has both an account key and payout address defined. If mining to foxy pool, only set Payout Address! If mining to HDPool / HPool / BPool, only set Account Key!"#, &*chain.name).red().underline());
 
+                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+
+                        let mut blah = String::new();
+                        std::io::stdin().read_line(&mut blah).expect("FAIL");
+                        exit(0);
                     }
                     chain_counter += 1;
                     let chain_tdl = chain.target_deadline.unwrap_or_default();
@@ -654,22 +664,31 @@ fn get_color(col: &str) -> &str {
     return &col;
 }
 
-fn get_cached_mining_info() -> Option<(u8, u32, String)> {
+fn get_cached_mining_info() -> Option<(u8, u32, String, u64)> {
     let cache_map = MINING_INFO_CACHE.lock().unwrap();
     let index = CURRENT_CHAIN_INDEX.lock().unwrap();
     match cache_map.get(&index) {
-        Some((height, json)) => {
-            Some((*index, *height, json.clone()))
+        Some((height, json, tdl)) => {
+            Some((*index, *height, json.clone(), *tdl))
         },
         None => None,
     }
 }
 
 fn add_mining_info_to_cache(index: u8, mining_info: MiningInfo) -> String {
+    let mut mod_mi = mining_info.clone();
+    let tdl = match get_target_deadline(None, mod_mi.base_target, index, None) {
+        TargetDeadlineType::PoolMaximum(val) => val,
+        TargetDeadlineType::ConfigChainLevel(val) => val,
+        TargetDeadlineType::ConfigOverriddenByID(val) => val,
+        TargetDeadlineType::Dynamic(val) => val,
+        TargetDeadlineType::Default => u64::max_value(),
+    };
+    mod_mi.target_deadline = tdl;
+    let mining_info_json = mod_mi.to_json().to_string();
+    debug!("CACHE - Chain #{} Block #{}: {:?}", index, mod_mi.height, mod_mi);
     let mut cache_map = MINING_INFO_CACHE.lock().unwrap();
-    let mining_info_json = mining_info.to_json().to_string();
-    debug!("CACHE - Chain #{} Block #{}: {:?}", index, mining_info.height, mining_info);
-    cache_map.insert(index, (mining_info.height, mining_info_json.clone()));
+    cache_map.insert(index, (mod_mi.height, mining_info_json.clone(), tdl));
     mining_info_json
 }
 
@@ -688,7 +707,21 @@ fn is_block_start_printed(index: u8, height: u32) -> bool {
 /// Return previously cached mining info if present, or create a cache for current mining info and return that
 fn get_current_mining_info_json() -> String {
     match get_cached_mining_info() {
-        Some((index, height, mining_info_json)) => {
+        Some((index, height, mining_info_json, tdl)) => {
+            let mi = match arbiter::get_current_chain_mining_info(index) {
+                Some((mi, _)) => mi,
+                _ => MiningInfo::empty()
+            };
+            let calculated_tdl = match get_target_deadline(None, mi.clone().base_target, index, None) {
+                TargetDeadlineType::ConfigChainLevel(val) => val,
+                TargetDeadlineType::ConfigOverriddenByID(val) => val,
+                TargetDeadlineType::Default => u64::max_value(),
+                TargetDeadlineType::Dynamic(val) => val,
+                TargetDeadlineType::PoolMaximum(val) => val,
+            };
+            if tdl != calculated_tdl {
+                add_mining_info_to_cache(index, mi);
+            }
             // check if block start has been printed for this index & height
             //   TRUE: Go ahead and return the mining info
             //  FALSE: Return the previous mining info
@@ -717,8 +750,16 @@ fn get_current_mining_info_json() -> String {
             let chain_map = CHAIN_MINING_INFOS.lock().unwrap();
             let index = CURRENT_CHAIN_INDEX.lock().unwrap();
             match chain_map.get(&index) {
-                Some((mining_info, _)) => add_mining_info_to_cache(*index, mining_info.clone()),
-                None => r#"{"result":"failure","reason":"Haven't found any mining info!"}"#.to_string(),
+                Some((mining_info, _)) => {
+                    // ^!@$IN' DEADLOCKS!!!1!
+                    let mi = mining_info.clone();
+                    drop(chain_map);
+                    add_mining_info_to_cache(*index, mi)
+                },
+                None => {
+                    drop(chain_map);
+                    r#"{"result":"failure","reason":"Haven't found any mining info!"}"#.to_string()
+                },
             }
         }
     }
@@ -775,7 +816,7 @@ fn query_create_default_config() {
 }
 
 fn print_forked_and_queued(chain_index: u8, height: u32) {
-    let chain = get_chain_from_index(chain_index).unwrap();
+    let chain = get_chain_from_index(chain_index);
     let color = get_color(&*chain.color);
     let border = String::from("==========================================================================================");
     println!("{}\n  {} {}\n{}",
@@ -792,12 +833,12 @@ fn print_forked_and_queued(chain_index: u8, height: u32) {
 fn print_block_started(
     chain_index: u8,
     height: u32,
-    base_target: u32,
+    base_target: u64,
     gen_sig: String,
     last_block_info: Option<LastBlockInfo>,
 ) {
     if !is_block_start_printed(chain_index, height) {
-        let current_chain = get_chain_from_index(chain_index).unwrap();
+        let current_chain = get_chain_from_index(chain_index);
         let mut new_block_message = String::from("");
         let border = String::from("------------------------------------------------------------------------------------------");
         let border2 = String::from("==========================================================================================");
@@ -806,7 +847,7 @@ fn print_block_started(
         let last_block_chain_color;
         match last_block_info {
             Some(LastBlockInfo::Completed(last_block_time, prev_block_chain_index)) => {
-                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                let prev_chain = get_chain_from_index(prev_block_chain_index);
                 last_block_chain_color = prev_chain.color;
                 if last_block_time > 0 {
                     let human_time;
@@ -818,7 +859,7 @@ fn print_block_started(
                 }
             },
             Some(LastBlockInfo::Interrupted(last_block_time, prev_block_chain_index)) => {
-                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                let prev_chain = get_chain_from_index(prev_block_chain_index);
                 last_block_chain_color = prev_chain.color;
                 let human_time;
                 if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
@@ -826,14 +867,18 @@ fn print_block_started(
                 last_block_time_str = format!("{}\n  Block interrupted after {} second{}{}\n", border, last_block_time, plural, human_time);
             },
             Some(LastBlockInfo::Requeued(requeue_info, last_block_time, prev_block_chain_index)) => {
-                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                let prev_chain = get_chain_from_index(prev_block_chain_index);
                 last_block_chain_color = prev_chain.color;
                 match requeue_info {
                     Some((num_times, max_times)) => {
-                        let human_time;
-                        if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
-                        let plural = match last_block_time { 1 => "", _ => "s", };
-                        last_block_time_str = format!("{}\n  Block requeued (#{}/{}) after {} second{}{}\n", border, num_times + 1, max_times, last_block_time, plural, human_time);
+                        if last_block_time > 0 {
+                            let human_time;
+                            if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
+                            let plural = match last_block_time { 1 => "", _ => "s", };
+                            last_block_time_str = format!("{}\n  Block requeued (#{}/{}) after {} second{}{}\n", border, num_times + 1, max_times, last_block_time, plural, human_time);
+                        } else {
+                            last_block_time_str = format!("{}\n Block requeued\n", border);
+                        }
                     },
                     _ => {
                         if last_block_time > 0 {
@@ -848,7 +893,7 @@ fn print_block_started(
                 }
             },
             Some(LastBlockInfo::Superseded(last_block_time, prev_block_chain_index)) => {
-                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                let prev_chain = get_chain_from_index(prev_block_chain_index);
                 last_block_chain_color = prev_chain.color;
                 let human_time;
                 if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
@@ -856,7 +901,7 @@ fn print_block_started(
                 last_block_time_str = format!("{}\n  Block superseded after {} second{}{}\n", border, last_block_time, plural, human_time);
             },
             Some(LastBlockInfo::Forked(last_block_time, prev_block_chain_index)) => {
-                let prev_chain = get_chain_from_index(prev_block_chain_index).unwrap();
+                let prev_chain = get_chain_from_index(prev_block_chain_index);
                 last_block_chain_color = prev_chain.color;
                 let human_time;
                 if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
@@ -903,7 +948,7 @@ fn print_block_started(
                      current_chain.is_hdpool.unwrap_or_default() || 
                      current_chain.is_hdpool_eco.unwrap_or_default() || 
                      current_chain.is_hpool.unwrap_or_default();
-        match get_target_deadline(None, base_target, chain_index, current_chain.clone()) {
+        match get_target_deadline(None, base_target, chain_index, Some(current_chain.clone())) {
             TargetDeadlineType::ConfigChainLevel(chain_tdl) => {
                 if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
                     human_readable_target_deadline = format!(" ({})", format_timespan(chain_tdl));
@@ -988,7 +1033,7 @@ fn print_nonce_submission(
     remote_addr: String,
     time_since_block_started: u64,
 ) {
-    let current_chain = get_chain_from_index(index).unwrap();
+    let current_chain = get_chain_from_index(index);
 
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
@@ -1077,7 +1122,7 @@ fn get_num_chains_with_priority(priority: u8) -> u8 {
 }
 
 fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confirmation_time_ms: i64) {
-    let current_chain = get_chain_from_index(chain_index).unwrap();
+    let current_chain = get_chain_from_index(chain_index);
 
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
@@ -1098,23 +1143,60 @@ fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confi
     }
 }
 
-fn print_nonce_rejected(chain_index: u8, block_height: u32, deadline: u64, rejection_time_ms: i64) {
+fn print_nonce_rejected(
+    chain_index: u8,
+    block_height: u32,
+    deadline: u64,
+    rejection_time_ms: i64,
+    attempt: u8,
+    attempts: u8,
+    failure_message: Option<String>,
+    is_timeout: bool,
+) {
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
     let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
-
+    let attempt_num;
+    if attempt == 0 {
+        attempt_num = 1;
+    } else if attempt > attempts {
+        attempt_num = attempts;
+    } else {
+        attempt_num = attempt;
+    }
     if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
-        let current_chain = get_chain_from_index(chain_index).unwrap();
+        let current_chain = get_chain_from_index(chain_index);
         let color = get_color(&*current_chain.color);
-        println!("            {}                      {}{}",
-            "Rejected:".red(),
-            deadline.to_string().color(color),
-            format!(" ({}ms)", rejection_time_ms).color(color)
-        );
+        let rejected_text = match is_timeout {
+            true =>  format!("Timeout ({}/{}): ", attempt_num, attempts),
+            false => format!("Rejected ({}/{}):", attempt_num, attempts),
+        };
+        if is_timeout {
+                println!("            {}                {}{}",
+                    rejected_text.red(),
+                    deadline.to_string().color(color),
+                    format!(" ({}ms)", rejection_time_ms).color(color)
+                );
+        } else {
+            if failure_message.is_none() {
+                println!("            {}                {}{}\n              (No reason given)",
+                    rejected_text.red(),
+                    deadline.to_string().color(color),
+                    format!(" ({}ms)", rejection_time_ms).color(color)
+                );
+            } else {
+                println!("            {}                {}{}\n              ({})",
+                    rejected_text.red(),
+                    deadline.to_string().color(color),
+                    format!(" ({}ms)", rejection_time_ms).color(color),
+                    format!("{}", failure_message.unwrap()).red(),
+                );
+            }
+        }
     }
 }
 
-fn get_network_difficulty_for_block(base_target: u32, block_time_seconds: u16) -> u64 {
+fn get_network_difficulty_for_block(base_target: u64, block_time_seconds: u16) -> u64 {
     // BHD = 14660155037u64
     // BURST = 18325193796u64
     return (4398046511104u64 / block_time_seconds as u64) / base_target as u64;
@@ -1134,10 +1216,17 @@ fn get_total_plots_size_in_tebibytes() -> f64 {
 
 fn get_target_deadline(
     account_id: Option<u64>,
-    base_target: u32,
+    base_target: u64,
     chain_index: u8,
-    chain: PocChain,
+    chain: Option<PocChain>,
 ) -> TargetDeadlineType {
+    let chain_obj;
+    if chain.is_some() {
+        chain_obj = chain.clone().unwrap();
+    } else {
+        chain_obj = get_chain_from_index(chain_index);
+    }
+
     // get max deadline from upstream if present
     let tdl_last_value;
     let upstream_target_deadline;
@@ -1159,13 +1248,13 @@ fn get_target_deadline(
     upstream_target_deadline = tdl_last_value;
 
     // get chain's global target deadline, if set
-    if chain.target_deadline.is_some() {
-        target_deadline = TargetDeadlineType::ConfigChainLevel(chain.target_deadline.unwrap());
+    if chain_obj.clone().target_deadline.is_some() {
+        target_deadline = TargetDeadlineType::ConfigChainLevel(chain_obj.clone().target_deadline.unwrap());
     }
 
-    // calculate the dynamic deadline 
-    if chain.use_dynamic_deadlines.unwrap_or_default() {
-        let (_, dynamic_target_deadline) = get_dynamic_deadline_for_block(base_target, chain.submit_probability.unwrap_or(95));
+    // calculate the dynamic deadline
+    if chain_obj.clone().use_dynamic_deadlines.unwrap_or_default() {
+        let (_, dynamic_target_deadline) = get_dynamic_deadline_for_block(base_target, chain_obj.clone().submit_probability.unwrap_or(95));
         if dynamic_target_deadline < upstream_target_deadline {
             target_deadline = TargetDeadlineType::Dynamic(dynamic_target_deadline);
         }
@@ -1173,7 +1262,7 @@ fn get_target_deadline(
 
     // check if there is a target deadline specified for this account id in this chain's config, if so, override all other deadlines with it
     if account_id.is_some() {
-        match chain.numeric_id_to_target_deadline {
+        match chain_obj.numeric_id_to_target_deadline {
             Some(num_id_to_tdls_map) => {
                 for (id, overridden_tdl) in num_id_to_tdls_map {
                     if id == account_id.unwrap() && overridden_tdl < upstream_target_deadline {
@@ -1187,7 +1276,7 @@ fn get_target_deadline(
     return target_deadline;
 }
 
-fn get_dynamic_deadline_for_block(base_target: u32, submit_probability: u16) -> (u64, u64) {
+fn get_dynamic_deadline_for_block(base_target: u64, submit_probability: u16) -> (u64, u64) {
     let net_diff = get_network_difficulty_for_block(base_target, 240) as u64;
     let plot_size_tebibytes = get_total_plots_size_in_tebibytes();
     // are we using dynamic deadlines for this chain?
@@ -1207,19 +1296,50 @@ fn get_time() -> String {
     return local_time.format("%I:%M:%S%P").to_string();
 }
 
-fn get_chain_from_index(index: u8) -> Option<PocChain> {
+fn get_chain_from_index(index: u8) -> PocChain {
     let mut i = 0;
+    let mut last_chain = PocChain {
+        name: String::from(""),
+        enabled: None,
+        priority: 0,
+        is_bhd: None,
+        is_boomcoin: None,
+        is_pool: None,
+        is_hpool: None,
+        is_hdpool: None,
+        is_hdpool_eco: None,
+        account_key: None,
+        miner_name: None,
+        url: String::from(""),
+        numeric_id_to_passphrase: None,
+        numeric_id_to_target_deadline: None,
+        historical_rounds: None,
+        target_deadline: None,
+        color: String::from(""),
+        get_mining_info_interval: None,
+        use_dynamic_deadlines: None,
+        submit_probability: None,
+        allow_lower_block_heights: None,
+        requeue_interrupted_blocks: None,
+        maximum_requeue_times: None,
+        append_version_to_miner_name: None,
+        miner_alias: None,
+        payout_address: None,
+        timeout: None,
+        submit_attempts: None,
+    };
     for inner in &crate::CONF.poc_chains {
         for chain in inner {
+            last_chain = chain.clone();
             if chain.enabled.unwrap_or(true) {
                 if i == index {
-                    return Some(chain.clone());
+                    return chain.clone();
                 }
                 i += 1;
             }
         }
     }
-    return None;
+    return last_chain;
 }
 
 fn get_chain_index(chain_url: &str, chain_name: &str) -> u8 {

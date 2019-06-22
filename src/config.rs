@@ -19,6 +19,9 @@ pub struct PocChain {
     pub is_bhd: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_boomcoin: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub is_pool: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -76,6 +79,15 @@ pub struct PocChain {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub miner_alias: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout_address: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submit_attempts: Option<u8>,
 }
 
 impl PartialEq for PocChain {

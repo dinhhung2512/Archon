@@ -240,7 +240,7 @@ fn handle_submit_nonce(req: &HttpRequest) -> FutureResult<HttpResponse, Error> {
                     )
                 },
                 _ => {
-                    create_response(StatusCode::OK, r#"{"result":"failure","reason":"Required parameters for nonce submission were not present. Must include ID/Nonce/Deadline."} "#.to_string())
+                    create_response(StatusCode::OK, r#"{"result":"failure","reason":"Required parameters for nonce submission were not present. Must include ID/Nonce/Deadline. Tip: If you are using Scavenger, make sure you DO NOT HAVE ANY PASSPHRASES defined in your Scavenger configuration!"}"#.to_string())
                 }
             }
         },

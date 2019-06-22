@@ -1,12 +1,12 @@
 [package]
 name = "archon"
-version = "1.1.0"
+version = "1.1.0-edge2"
 authors = ["Bloodreaver https://github.com/Bloodreaver"]
 description = """
 A multi-chain, collision-free proof-of-capacity mining proxy.
 """
 build = "build.rs"
-keywords = ["poc", "proxy", "rust", "crypto", "cryptocurrency", "burst", "bhd", "multi-chain", "collision-free"]
+keywords = ["poc", "proxy", "rust", "crypto", "cryptocurrency", "burst", "bhd", "boom", "boomcoin", "burstcoin", "multi-chain", "collision-free"]
 license = "GPL-3.0 or later"
 edition = "2018"
 
