@@ -1,6 +1,6 @@
 [package]
 name = "archon"
-version = "1.1.0-edge2"
+version = "1.1.0-edge3"
 authors = ["Bloodreaver https://github.com/Bloodreaver"]
 description = """
 A multi-chain, collision-free proof-of-capacity mining proxy.

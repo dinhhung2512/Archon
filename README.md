@@ -268,9 +268,6 @@ numericIdToTargetDeadline:
 - `payoutAddress` *`String`*
   - Optional, but Required for Foxy-Pool type upstreams.
   - Sends the specified value as an `X-Account` header for Foxy-Pool upstreams to use.
-- `timeout` *`Unsigned 8-bit Integer`*
-  - Optional. Default = 5 seconds.
-  - Specify a timeout duration for this chain, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` chain configuration setting.
 - `submitAttempts` *`Unsigned 8-bit Integer`*
   - Optional. Default = 5 attempts.
   - Specify a maximum amount of times that Archon will attempt to submit a deadline before giving up.

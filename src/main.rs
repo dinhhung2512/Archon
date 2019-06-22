@@ -1325,7 +1325,6 @@ fn get_chain_from_index(index: u8) -> PocChain {
         append_version_to_miner_name: None,
         miner_alias: None,
         payout_address: None,
-        timeout: None,
         submit_attempts: None,
     };
     for inner in &crate::CONF.poc_chains {

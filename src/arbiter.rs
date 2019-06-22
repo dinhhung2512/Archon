@@ -75,7 +75,7 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
         chain_index,
         reqwest::Client::builder()
             .default_headers(default_headers)
-            .timeout(std::time::Duration::from_secs(chain.timeout.unwrap_or(5) as u64))
+            .timeout(std::time::Duration::from_secs(5))
             .build()
             .unwrap(),
     );
@@ -107,7 +107,7 @@ pub fn thread_arbitrate() {
                 create_chain_nonce_submission_client(index);
                 thread::spawn(move || {
                     thread_get_mining_info(
-                        reqwest::Client::builder().timeout(std::time::Duration::from_secs(chain.timeout.unwrap_or(5) as u64)).build().unwrap(),
+                        reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build().unwrap(),
                         chain.clone(),
                         new_sender,
                     );
@@ -1324,7 +1324,7 @@ pub fn process_nonce_submission(
                                         deadline_accepted = true;
                                     } else {
                                         if text.len() > 0 && failure_message.clone().is_none() {
-                                            if text.contains("error reaching upstream") || text.contains("Deadline exceeds maximum allowed deadline") {
+                                            if text.contains("error reaching upstream") {
                                                 attempt += 1;
                                                 if attempt < attempts {
                                                     let color = super::get_color(&*current_chain.color);
