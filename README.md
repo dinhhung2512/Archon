@@ -269,11 +269,14 @@ numericIdToTargetDeadline:
   - Optional, but Required for Foxy-Pool type upstreams.
   - Sends the specified value as an `X-Account` header for Foxy-Pool upstreams to use.
 - `timeout` *`Unsigned 8-bit Integer`*
-  - Optional. Default = 5 seconds.
-  - Specify a timeout duration for this chain, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` chain configuration setting.
+  - Optional. Default = 5 seconds. Minimum = 3.
+  - Specify a timeout duration for this chain, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. 
+  - If this is set in a chain, it will **override** the global setting for the chain only.
+  - For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` chain configuration setting or global setting.
 - `submitAttempts` *`Unsigned 8-bit Integer`*
   - Optional. Default = 5 attempts.
   - Specify a maximum amount of times that Archon will attempt to submit a deadline before giving up.
+  - If this is set in a chain, it will **override** the global setting for the chain only.
 
 ## Global Configuration Options
 Use these configuration options to control Archon's behavior.
@@ -348,14 +351,17 @@ Use these configuration options to control Archon's behavior.
   - Optional. Default = true
   - If enabled, Archon will check every 5 minutes for miners that haven't sent an update in more than **half of** `minerUpdateTimeout` seconds (Default = 1800 seconds or 30 minutes) and show a warning in the console and write a warning to the log file if logging is enabled.
 - `timeout` *`Unsigned 8-bit Integer`*
-  - Optional. Default = 5 seconds.
-  - Override the default timeout duration for all chains, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` configuration setting (per chain or global).
+  - Optional. Default = 5 seconds. Minimum = 3.
+  - Specify the default timeout duration for all chains, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` configuration setting (per chain or global).
+  - This setting can be overridden per chain by specifying the it in the chain configuration.
 - `submitAttempts` *`Unsigned 8-bit Integer`*
   - Optional. Default = 5 attempts.
-  - Override the default maximum amount of times that Archon will attempt to submit a deadline before giving up.
+  - Specify the default maximum amount of times that Archon will attempt to submit a deadline before giving up.
+  - This setting can be overridden per chain by specifying the it in the chain configuration.
 
 ## Sample configuration file
-Archon will look in the working directory (usually the same location as the executable) for `archon.yaml`.
+Archon will look in the **working directory** (usually the same location as the executable) for `archon.yaml`.
+You can change the working directory in windows or linux, just do some googling.
 
 If the file cannot be loaded or is non-existent, Archon will ask you if you would like to generate one. Be warned: If you agree, Archon will overwrite any existing `archon.yaml` file in the working directory, this is not reversible!
 
