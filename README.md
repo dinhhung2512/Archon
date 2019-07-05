@@ -353,11 +353,11 @@ Use these configuration options to control Archon's behavior.
 - `timeout` *`Unsigned 8-bit Integer`*
   - Optional. Default = 5 seconds. Minimum = 3.
   - Specify the default timeout duration for all chains, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. For deadline submissions Archon will only retry up to a default of 5 times. You can change this setting using the `submitAttempts` configuration setting (per chain or global).
-  - This setting can be overridden per chain by specifying the it in the chain configuration.
+  - This setting can be overridden per chain by specifying it in the chain configuration.
 - `submitAttempts` *`Unsigned 8-bit Integer`*
   - Optional. Default = 5 attempts.
   - Specify the default maximum amount of times that Archon will attempt to submit a deadline before giving up.
-  - This setting can be overridden per chain by specifying the it in the chain configuration.
+  - This setting can be overridden per chain by specifying it in the chain configuration.
 
 ## Sample configuration file
 Archon will look in the **working directory** (usually the same location as the executable) for `archon.yaml`.
