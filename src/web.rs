@@ -467,5 +467,5 @@ pub fn start_server() {
     .shutdown_timeout(0)
     .server_hostname(get_user_agent_str().to_string())
     .start();
-    archon_web_server_sys.run();
+    if archon_web_server_sys.run().is_ok() {}
 }
