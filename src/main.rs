@@ -62,7 +62,8 @@ lazy_static! {
         let block_start_printed_map = HashMap::new();
         Arc::new(Mutex::new(block_start_printed_map))
     };
-    static ref HDPOOL_SUBMIT_NONCE_SENDER: Arc<Mutex<Option<crossbeam::channel::Sender<HDPoolSubmitNonceInfo>>>> = Arc::new(Mutex::new(None));
+    static ref HDPOOL_SUBMIT_NONCE_SENDER_BHD: Arc<Mutex<Option<crossbeam::channel::Sender<HDPoolSubmitNonceInfo>>>> = Arc::new(Mutex::new(None));
+    static ref HDPOOL_SUBMIT_NONCE_SENDER_LHD: Arc<Mutex<Option<crossbeam::channel::Sender<HDPoolSubmitNonceInfo>>>> = Arc::new(Mutex::new(None));
     // Key = block height, Value = tuple (account_id, best_deadline)
     static ref BEST_DEADLINES: Arc<Mutex<HashMap<u32, Vec<(u64, u64)>>>> = {
         let best_deadlines = HashMap::new();
@@ -231,6 +232,7 @@ fn main() {
                 if chain.numeric_id_to_passphrase.is_some()
                     && (chain.is_pool.unwrap_or_default()
                         || chain.is_bhd.unwrap_or_default()
+                        || chain.is_lhd.unwrap_or_default()
                         || !chain.enabled.unwrap_or(true))
                 {
                     if unused_passphrase_warnings.len() > 0 {
@@ -243,6 +245,8 @@ fn main() {
                         unused_passphrase_warnings.push_str(" (CHAIN IS POOL)");
                     } else if chain.is_bhd.unwrap_or_default() {
                         unused_passphrase_warnings.push_str(" (CHAIN IS BHD)");
+                    } else if chain.is_lhd.unwrap_or_default() {
+                        unused_passphrase_warnings.push_str(" (CHAIN IS LHD)");
                     }
                 }
                 if chain.enabled.unwrap_or(true) {
@@ -288,9 +292,20 @@ fn main() {
                         invalid_url_warnings.push_str(format!("    Chain \"{}\" has no URL set when one is required! If you are trying to use HDPool direct mining, ensure your config names are correct, as they are CaSe SeNsItIvE!\n", &*chain.name).as_str());
                     }
                     // check if both payout address and account key are set
-                    if chain.account_key.is_some() && chain.payout_address.is_some() {
+                    if chain.account_key.is_some() && chain.foxypool_payout_address.is_some() {
                         error!(r#"The chain "{}" has both an account key and payout address defined. If mining to foxy pool, only set Payout Address! If mining to HDPool / HPool / BPool, only set Account Key!"#, &*chain.name);
-                        println!("\n  {}", format!(r#"FATAL ERROR: The chain "{}" has both an account key and payout address defined. If mining to foxy pool, only set Payout Address! If mining to HDPool / HPool / BPool, only set Account Key!"#, &*chain.name).red().underline());
+                        println!("\n  {}", Colour::Red.underline().paint(format!(r#"FATAL ERROR: The chain "{}" has both an account key and payout address defined. If mining to foxy pool, only set Payout Address! If mining to HDPool / HPool / BPool, only set Account Key!"#, &*chain.name)));
+
+                        println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
+
+                        let mut blah = String::new();
+                        std::io::stdin().read_line(&mut blah).expect("FAIL");
+                        exit(0);
+                    }
+                    // check if account key is set for chains other than hpool / hdpool
+                    if chain.account_key.is_some() && !(chain.is_hdpool.unwrap_or_default() || chain.is_hdpool_eco.unwrap_or_default() || chain.is_hpool.unwrap_or_default()) {
+                        error!(r#"The chain "{}" has an accountKey defined, but the accountKey option is ONLY valid for HPool/BPool or HDPool. If mining to a Foxy Pool, use foxypoolPayoutAddress! If mining to HDPool / HPool / BPool, only set Account Key!"#, &*chain.name);
+                        println!("\n  {}", Colour::Red.underline().paint(format!(r#"FATAL ERROR: The chain "{}" has an accountKey defined, but the accountKey option is ONLY valid for HPool/BPool or HDPool. If mining to a Foxy Pool, use foxypoolPayoutAddress. If mining to HDPool / HPool / BPool, use accountKey, and ensure you !"#, &*chain.name)));
 
                         println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
 
@@ -989,10 +1004,8 @@ fn print_block_started(
             ).as_str(),
         );
         let mut human_readable_target_deadline = String::from("");
-        let is_bhd = current_chain.is_bhd.unwrap_or_default() || 
-                     current_chain.is_hdpool.unwrap_or_default() || 
-                     current_chain.is_hdpool_eco.unwrap_or_default() || 
-                     current_chain.is_hpool.unwrap_or_default();
+        let is_bhd = current_chain.is_bhd.unwrap_or_default();
+        let is_lhd = current_chain.is_lhd.unwrap_or_default();
         match get_target_deadline(None, base_target, chain_index, Some(current_chain.clone())) {
             TargetDeadlineType::ConfigChainLevel(chain_tdl) => {
                 if crate::CONF.show_human_readable_deadlines.unwrap_or_default() {
@@ -1046,6 +1059,15 @@ fn print_block_started(
                 format!("  {}   {}\n",
                     chain_color.bold().paint("Network Difficulty:"),
                     chain_color.paint(format!("{} ({})", net_difficulty_fmt, bhd_net_difficulty_fmt))
+                ).as_str(),
+            );
+        } else if is_lhd {
+            let lhd_net_diff = get_network_difficulty_for_block(base_target, 300);
+            let lhd_net_difficulty_fmt = fmt_capacity(lhd_net_diff, None);
+            new_block_message.push_str(
+                format!("  {}   {}\n",
+                    chain_color.bold().paint("Network Difficulty:"),
+                    chain_color.paint(format!("{} ({})", net_difficulty_fmt, lhd_net_difficulty_fmt))
                 ).as_str(),
             );
         } else {
@@ -1355,6 +1377,7 @@ fn get_chain_from_index(index: u8) -> PocChain {
         enabled: None,
         priority: 0,
         is_bhd: None,
+        is_lhd: None,
         is_boomcoin: None,
         is_pool: None,
         is_hpool: None,

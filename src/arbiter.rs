@@ -144,6 +144,10 @@ fn thread_handle_hdpool_nonce_submissions(
 ) {
     let miner_mark = "20190910";
     let account_key = chain.account_key.clone().unwrap_or(String::from(""));
+    let coin = match chain.is_lhd.unwrap_or_default() {
+        true => String::from("LHD"),
+        _ => String::from("BHD"),
+    };
     loop {
         let ks = match ks_rx.try_recv() {
             Ok(signal) => signal,
@@ -170,7 +174,7 @@ fn thread_handle_hdpool_nonce_submissions(
                 if chain.append_version_to_miner_name.unwrap_or_default() {
                     miner_name.push_str(format!(" v{}", super::VERSION).as_str());
                 }
-                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{}","submit":[{{"accountId":{},"height":{},"nonce":{},"deadline":{},"ts":{}}}]}}}}"#, account_key, capacity_gb, miner_mark, miner_name, submit_nonce_info.account_id, submit_nonce_info.height, submit_nonce_info.nonce, submit_nonce_info.deadline_unadjusted, unix_timestamp);
+                let message = format!(r#"{{"cmd":"poolmgr.submit_nonce","mark":"{}","para":{{"account_key":"{}","capacity":{},"miner_mark":"{}","miner_name":"{}","submit":[{{"accountId":{},"coin":"{}","height":{},"nonce":{},"deadline":{},"ts":{}}}]}}}}"#, coin.clone(), account_key, capacity_gb, miner_mark, miner_name, submit_nonce_info.account_id, coin.clone(), submit_nonce_info.height, submit_nonce_info.nonce, submit_nonce_info.deadline_unadjusted, unix_timestamp);
                 debug!("HDPool Websocket: SubmitNonce message: {}", message);
                 match tx.unbounded_send(Message::Text(message.clone().into())) {
                     Ok(_) => {
@@ -220,6 +224,10 @@ fn thread_hdpool_websocket(
         }
         let miner_mark = "20190910";
         let account_key = chain.account_key.clone().unwrap_or(String::from(""));
+        let coin = match chain.is_lhd.unwrap_or_default() {
+            true => "LHD",
+            _ => "BHD",
+        };
         let mut miner_name = match chain.miner_name.clone() {
             Some(miner_name) => {
                 format!("{} via {}", miner_name, super::uppercase_first(super::APP_NAME))
@@ -246,14 +254,14 @@ fn thread_hdpool_websocket(
                     break;
                 }
                 let capacity_gb = crate::get_total_plots_size_in_tebibytes() * 1024f64;
-                let data = format!(r#"{{"cmd":"poolmgr.heartbeat","para":{{"account_key":"{}","miner_name":"{}","miner_mark":"{}","capacity":{}}}}}"#,
-                    account_key, miner_name, miner_mark, capacity_gb);
+                let data = format!(r#"{{"cmd":"poolmgr.heartbeat","mark":"{}","para":{{"account_key":"{}","miner_name":"{}","miner_mark":"{}","capacity":{}}}}}"#,
+                    coin.clone(), account_key, miner_name, miner_mark, capacity_gb);
                 match txc.unbounded_send(Message::Text(data.clone().into())) {
                     Ok(_) => {
-                        trace!("Heartbeat Sent:\n    {}", data);
+                        trace!("{} Heartbeat Sent:\n    {}", coin.clone(), data);
                     },
                     Err(why) => {
-                        warn!("HDPool Websocket Heartbeat failure: {:?}.", why);
+                        warn!("HDPool {} Websocket Heartbeat failure: {:?}.", coin.clone(), why);
                     },
                 };
                 thread::sleep(std::time::Duration::from_secs(5));
@@ -272,8 +280,8 @@ fn thread_hdpool_websocket(
             use futures::Sink;
             let (mut sink, stream) = ws_stream.split();
 
-            sink.start_send(Message::Text(r#"{"cmd":"mining_info"}"#.into())).unwrap();
-            sink.start_send(Message::Text(r#"{"cmd":"poolmgr.mining_info"}"#.into())).unwrap();
+            sink.start_send(Message::Text(format!(r#"{{"cmd":"mining_info","mark":"{}"}}"#, coin.clone()).into())).unwrap();
+            sink.start_send(Message::Text(format!(r#"{{"cmd":"poolmgr.mining_info", "mark":"{}"}}"#, coin.clone()).into())).unwrap();
 
             let ws_writer = rx.fold(sink, |mut sink, msg: Message| {
                 sink.start_send(msg).unwrap();
@@ -284,25 +292,47 @@ fn thread_hdpool_websocket(
                 match message.to_text() {
                     Ok(message_str) => { 
                         match message_str.to_lowercase().as_str() {
-                            r#"{"cmd":"poolmgr.heartbeat"}"# => {
-                                trace!("Heartbeat acknowledged.");
+                            r#"{"cmd":"poolmgr.heartbeat","mark":"lhd"}"# => {
+                                trace!("LHD Heartbeat acknowledged.");
+                            },
+                            r#"{"cmd":"poolmgr.heartbeat","mark":"bhd"}"# => {
+                                trace!("BHD Heartbeat acknowledged.");
                             },
                             _ => {
                                 debug!("HDPool WebSocket: Received:\n    {}", message);
-                                if message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info""#) || message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info"#) {
+                                if coin == "LHD" && (
+                                    message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info","mark":"lhd","para":"#,) ||
+                                    message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info","mark":"lhd","para":"#)
+                                ) {
+                                    let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
+                                    let mining_info = parsed_message_str["para"].to_string().clone();
+                                    debug!("HDPool WebSocket: NEW LHD BLOCK: {}", mining_info);
+                                    match mining_info_sender.send(mining_info) {
+                                        Ok(_) => {
+                                            debug!("Sent LHD mining info through channel successfully.");
+                                        }
+                                        Err(why) => {
+                                            warn!("HDP-WS: Couldn't send LHD mining info through channel: {}", why);
+                                        }
+                                    }
+                                } else if coin == "BHD" && (
+                                    message_str.to_lowercase().starts_with(r#"{"cmd":"mining_info","mark":"bhd","para":"#,) ||
+                                    message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info","para":"#) ||
+                                    message_str.to_lowercase().starts_with(r#"{"cmd":"poolmgr.mining_info","mark":"bhd","para":"#)
+                                ) {
                                     let parsed_message_str: serde_json::Value = serde_json::from_str(&message_str).unwrap();
                                     let mining_info = parsed_message_str["para"].to_string().clone();
                                     debug!("HDPool WebSocket: NEW BHD BLOCK: {}", mining_info);
                                     match mining_info_sender.send(mining_info) {
                                         Ok(_) => {
-                                            debug!("Sent mining info through channel successfully.");
+                                            debug!("Sent BHD mining info through channel successfully.");
                                         }
                                         Err(why) => {
-                                            warn!("HDP-WS: Couldn't send mining info through channel: {}", why);
+                                            warn!("HDP-WS: Couldn't send BHD mining info through channel: {}", why);
                                         }
                                     }
                                 } else {
-                                    debug!("HDPool WebSocket: Received unknown message: {}", message);
+                                    debug!("HDPool {} WebSocket: Received unknown message: {}", coin.clone(), message);
                                 }
                             },
                         }
@@ -372,8 +402,13 @@ fn thread_get_mining_info(
         let chain_copy = chain.clone();
         thread::spawn(move || {
             // set global submit nonce sender so it can be accessed from nonce submission handler code
-            *crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap() = Some(hdpool_nonce_submission_sender.clone());
+            if chain_copy.is_lhd.unwrap_or_default() {
+                *crate::HDPOOL_SUBMIT_NONCE_SENDER_LHD.lock().unwrap() = Some(hdpool_nonce_submission_sender.clone());
+                thread_hdpool_websocket(chain_copy, hdpool_mining_info_sender.clone(), hdpool_nonce_submission_receiver);
+            } else {
+                *crate::HDPOOL_SUBMIT_NONCE_SENDER_BHD.lock().unwrap() = Some(hdpool_nonce_submission_sender.clone());
             thread_hdpool_websocket(chain_copy, hdpool_mining_info_sender.clone(), hdpool_nonce_submission_receiver);
+            }
         });
     }
 /* END ASYNC WEBSOCK STUFF. */
@@ -1231,6 +1266,7 @@ pub fn process_nonce_submission(
                     && !current_chain.is_hdpool_eco.unwrap_or_default()
                     && !current_chain.is_pool.unwrap_or_default()
                     && !current_chain.is_bhd.unwrap_or_default()
+                    && !current_chain.is_lhd.unwrap_or_default()
                 {
                     let mut passphrase_set = false;
                     match current_chain.clone().numeric_id_to_passphrase {
@@ -1268,7 +1304,10 @@ pub fn process_nonce_submission(
                             // check if chain is HDPool Direct
                             if (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some() {
                                 // get sender
-                                let sender = crate::HDPOOL_SUBMIT_NONCE_SENDER.lock().unwrap();
+                                let sender = match current_chain.is_lhd.unwrap_or_default() {
+                                    true => crate::HDPOOL_SUBMIT_NONCE_SENDER_LHD.lock().unwrap(),
+                                    _ => crate::HDPOOL_SUBMIT_NONCE_SENDER_BHD.lock().unwrap()
+                                };
                                 if sender.is_some() {
                                     let sender = sender.clone().unwrap();
                                     info!("DL Send - #{} | ID={} | DL={} (Unadjusted={})", block_height, account_id, adjusted_deadline, unadjusted_deadline);
@@ -1309,6 +1348,7 @@ pub fn process_nonce_submission(
                                     || current_chain.is_hdpool_eco.unwrap_or_default()
                                     || current_chain.is_hpool.unwrap_or_default()
                                     || current_chain.is_bhd.unwrap_or_default()
+                                    || current_chain.is_lhd.unwrap_or_default()
                                     || current_chain.is_pool.unwrap_or_default() {
                                     if current_chain.is_boomcoin.unwrap_or(false) {
                                         url.push_str(format!("/boom?requestType=submitNonce&blockheight={}&accountId={}&nonce={}&deadline={}",
@@ -1495,6 +1535,7 @@ pub fn process_nonce_submission(
                     && !current_chain.is_hdpool_eco.unwrap_or_default()
                     && !current_chain.is_hpool.unwrap_or_default()
                     && !current_chain.is_pool.unwrap_or_default()
+                    && !current_chain.is_lhd.unwrap_or_default()
                     && !current_chain.is_bhd.unwrap_or_default() {
                     let resp = SubmitNonceResponse{
                         result: String::from("failure"),

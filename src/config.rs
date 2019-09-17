@@ -19,6 +19,9 @@ pub struct PocChain {
     pub is_bhd: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_lhd: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub is_boomcoin: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
