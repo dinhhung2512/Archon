@@ -210,17 +210,7 @@ impl Config {
 #   before Archon can send the next queued block to be mined. Set it too small, and Archon will instruct your miners to start mining a 
 #   new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely.
 #   Ideally it should be set around 5 seconds longer than your regular scan times, 5 seconds just to give it a safety net.
-gracePeriod: 20
-
-# Priority Mode: Optional. Default: True.
-#   TRUE: Chains will be mined in the order specified in the chain configurations below.
-#  FALSE: Blocks will be mined on a first in, first out basis.
-priorityMode: true
-
-# Interrupt Lower Priority Blocks: Optional. Default: True. Only used in priority mode.
-#   TRUE: Lower priority blocks will be interrupted by new blocks from a higher priority chain.
-#  FALSE: Blocks will not be interrupted unless outdated by a new block from the same chain.
-interruptLowerPriorityBlocks: true
+gracePeriod: 30
 
 # Web Server Bind Address: Which interface to listen for requests from your miners and/or web requests.
 
@@ -237,20 +227,8 @@ webServerBindAddress: 0.0.0.0
 # Web Server Port: Listen for requests on this port.
 webServerPort: 1337
 
-# Use PoC Chain Colors: Optional. Default: True. Whether to use colors in console logging for each chain.
-# NOTE: On windows, if your colors are dim, see: https://blogs.msdn.microsoft.com/commandline/2017/08/02/updating-the-windows-console-colors/
-usePocChainColors: true
-
 # Show Human Readable Deadlines: Optional. If true, values displayed in seconds will be appended with a human readable value, for example: 3345951 (1m 8d 17:25:51)
 showHumanReadableDeadlines: true
-
-# Logging Level: Optional. Default: Info. Case insensitive.
-#   Valid options: off|trace|debug|info|warn|error
-loggingLevel: info
-
-# Show Miner Addresses: Optional. Default: false.
-#   Shows the IP Address of miner's which submit deadlines.
-showMinerAddresses: false
 
 ######################################################################################################################
 # Define PoC Chains to mine here, Archon will exit if there are no chains configured/enabled, you need at least one! #
@@ -261,30 +239,40 @@ showMinerAddresses: false
 ######## See https://github.com/Bloodreaver/Archon#defining-your-mining-chains for help with this if needed ########
 
 pocChains:
+
 # BHD via HDPool (Direct - no other applications needed)
   - name: BTCHD - HDPool [Direct]
     priority: 0
+    colorHex: "\#F4AA1C"
   # Your HDPool account key goes here:
     accountKey: abcdefg-abcdefg-abcdefg-abcdefg
     isHdpool: true
+    isBhd: true
 #    minerName: My Miner
-    color: cyan
+
+# LHD via HDPool ECO (Direct - no other applications needed)
+  - name: LTCHD - HDPool [Direct]
+    priority: 1
+    colorHex: "\#05aba4"
+  # Your HDPool account key goes here:
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+    isHdpoolEco: true
+    isLhd: true
+#    minerName: My Miner
+
+# BOOM via VLP pool (http://boom.voiplanparty.com)
+  - name: BOOM - VLP [Pool]
+    priority: 2
+    url: "http://boom.voiplanparty.com"
+    colorHex: "\#aaaaaa"
+    isPool: true
 
 # BURST via VLP pool (http://voiplanparty.com)
   - name: BURST - VLP [Pool]
-    priority: 1
-    isPool: true
+    priority: 3
     url: "http://voiplanparty.com:8124"
-    color: magenta
-
-# BURST Testnet Pool - Disabled by default
-  - name: BURST - TestNet [Pool]
-    enabled: false
-    priority: 2
-    isPool: true
-    url: "http://75.100.126.230:8124"
-    targetDeadline: 7200
-    color: yellow"#.to_string();
+    colorHex: "\#00579D"
+    isPool: true"#.to_string();
         }
 
     pub fn parse_config(file: File) -> Result<Self, ArchonError> {

@@ -25,7 +25,8 @@ A collision free, multi-chain proof of capacity mining proxy which supports BURS
   - Can interrupt lower priority blocks (toggleable)
   - Compatible with HDPool mining (directly, without the use of HDProxy or another program)
   - Compatible with BurstNeon, Foxy-X, Nogrod/goburstpool, HPool and BATS pool software
-  - Compatible with BHD, Burst and Boom wallet software for solo mining
+  - Compatible with BHD, LHD, Burst and Boom wallet software for solo mining
+    - *For BHD/LHD, using an encrypted wallet may require unlocking the wallet before mining is commenced.*
   - [Customizable per-chain settings](#all-configuration-options-for-poc-chains):
     - Dynamic Deadlines (auto adjust for network difficulty based on total plot capacity) with customisable submit probability
     - Target deadline (for the entire chain)
@@ -48,11 +49,11 @@ Trying to be brief, for each chain you instruct Archon to manage, it will:
 - Wait for connections from your miners, just like a normal pool/wallet would do
   - Upon receiving a `getMiningInfo` request, asynchronously sends the *current mining info* to the miner
   - Upon receiving a `submitNonce` request (deadline submission) from a miner, uses logic to determine which chain the submission is for and whether to forward the deadline to the upstream pool/wallet
-    - Do not send Upstream: Asynchronously sends a fake confirmation back to the miner
-      - This will be the case if either of the following is true:
+    - 1. Send a confirmation back to the mining software so it can continue mining unimpeded
+    - 2. Determine whether or not to send the deadline submission to the upstream pool / wallet
+      - If either of the following is true, then the deadline will NOT be sent upstream:
         - The submitted deadline is greater than the target deadline for this chain
         - The submitted deadline is greater than previously submitted deadlines by the account ID for this block height
-    - Send Upstream: Asynchronously sends the deadline submission upstream, and awaits the result, forwarding the result back to the miner
 - Once a second, in a separate thread, processes any blocks waiting to be mined, using logic to determine when to start mining them.
 ```
 
@@ -69,79 +70,176 @@ Note: You must have at least one PoC Chain defined, or Archon will have nothing 
 Example chain layouts for different purposes, using the bare minimum information required by Archon:
 ```yaml
 pocChains:
-# BHD via HDProxy
-#  (You must have HDProxy running on the same machine as Archon with these settings!)
-  - name: First Chain
+
+#------------------------   BHD   ------------------------#
+
+# BHD via VLP 0-100 Pool
+  - name: BHD - VLP [0-100]
     priority: 0
-    url: "http://localhost:60100"
-    isHdpool: true
-    color: cyan
+    colorHex: "#F4AA1C"
+    url: "http://bhd.voiplanparty.com"
+    isBhd: true
+    isPool: true
 
 # BHD via HDPool CO Pool (Direct - no other applications needed)
-  - name: Second Chain
-    priority: 1
+  - name: BHD - HDPool CO [Direct]
+    enabled: false
+    priority: 0
+    colorHex: "#F4AA1C"
   # Your HDPool account key goes here:
     accountKey: abcdefg-abcdefg-abcdefg-abcdefg
-  # If you wish to mine on ECO pool, change the below line to isHdpoolEco: true
     isHdpool: true
+    isBhd: true
 #    minerName: My Miner
-    color: blue
+
+# BHD via HDPool ECO Pool (Direct - no other applications needed)
+  - name: BHD - HDPool ECO [Direct]
+    enabled: false
+    priority: 0
+    colorHex: "#F4AA1C"
+  # Your HDPool account key goes here:
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+    isHdpoolEco: true
+    isBhd: true
+#    minerName: My Miner
+
+# BHD via Foxy Pool 0-100
+  - name: BHD - FoxyPool 0-100
+    enabled: false
+    url: "https://bhd.foxypool.cf"
+    priority: 0
+    colorHex: "#F4AA1C"
+    foxypoolPayoutAddress: PutYourBHDWalletReceivingAddressHere
+  #  foxypoolAccountName: PutYourDesiredDisplayNameHere
+    isBhd: true
+    isPool: true
 
 # BHD via HPool
-  - name: Third Chain
-    priority: 2
-  # Your HPool API Key / Account key goes here:
+  - name: BHD - HPool
+    enabled: false
+    url: "http://btchd.hpool.com"
+    priority: 0
+    colorHex: "#F4AA1C"
+  # Your HPool API Key / Account Key goes here:
     accountKey: abcdefg-abcdefg-abcdefg-abcdefg
     isHpool: true
-    url: "http://btchd.hpool.com"
 #    minerName: My Miner
-    color: yellow
 
 # BHD Solo
 #  (You must have a BHD wallet running in mining mode / with RPC server on,
 #   on the same machine as Archon is running on with these settings!)
-  - name: Fourth Chain
-    priority: 3
-    isBhd: true
+  - name: BHD [Solo]
+    enabled: false
     url: "http://localhost:8732"
-    color: green
+    priority: 0
+    colorHex: "#F4AA1C"
+    isBhd: true
 
-# Burst Pool mining via voiplanparty.com
-  - name: Fifth Chain
-    priority: 4
-    url: "http://voiplanparty.com:8124"
+#------------------------   LHD   ------------------------#
+
+# LHD via VLP 0-100 Pool
+  - name: LHD - VLP [0-100]
+    priority: 1
+    colorHex: "#05aba4"
+    url: "http://lhd.voiplanparty.com:1555"
+    isLhd: true
     isPool: true
-    color: magenta
 
-# Burst Solo mining
-#  (You must have a Burst wallet running on the same machine as Archon with these settings!)
-  - name: Sixth Chain
-    priority: 5
-    url: "http://localhost:8125"
-    numericIdToPassphrase:
-      12345678901234567890: passphrase for id 12345678901234567890 goes here
-      23456789012345678901: "passphrase for id 23456789012345678901 goes here"
-#^^^^^ spacing here is very important!
-    color: cyan
+# LHD via HDPool CO Pool (Direct - no other applications needed)
+  - name: LHD - HDPool CO [Direct]
+    enabled: false
+    priority: 1
+    colorHex: "#05aba4"
+  # Your HDPool account key goes here:
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+    isHdpool: true
+    isLhd: true
+#    minerName: My Miner
+
+# LHD via HDPool ECO Pool (Direct - no other applications needed)
+  - name: LHD - HDPool ECO [Direct]
+    enabled: false
+    priority: 1
+    colorHex: "#05aba4"
+  # Your HDPool account key goes here:
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+    isHdpoolEco: true
+    isLhd: true
+#    minerName: My Miner
+
+# LHD via Foxy Pool 0-100
+  - name: LHD - FoxyPool 0-100
+    enabled: false
+    url: "https://lhd.foxypool.cf"
+    priority: 1
+    colorHex: "#05aba4"
+    foxypoolPayoutAddress: PutYourBHDWalletReceivingAddressHere
+  #  foxypoolAccountName: PutYourDesiredDisplayNameHere
+    isLhd: true
+    isPool: true
+
+# LHD via HPool
+  - name: LHD - HPool
+    enabled: false
+    url: "http://lhd.hpool.com" #eco = "http://lhde.hpool.com"
+    priority: 1
+    colorHex: "#05aba4"
+  # Your HPool API Key / Account Key goes here:
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+    isHpool: true
+    isLhd: true
+#    minerName: My Miner
+
+# LHD Solo
+#  (You must have a LHD wallet running in mining mode / with RPC server on,
+#   on the same machine as Archon is running on with these settings!)
+  - name: LHD [Solo]
+    enabled: false
+    url: "http://localhost:9832"
+    priority: 1
+    colorHex: "#05aba4"
+    isLhd: true
+
+#------------------------   BOOMCOIN   ------------------------#
 
 # Boom Pool mining via boom.voiplanparty.com
-  - name: Seventh Chain
-    priority: 6
-    url: "http://boom.voiplanparty.com:80"
+  - name: BOOM [VLP]
+    priority: 2
+    url: "http://boom.voiplanparty.com"
+    colorHex: "#aaaaaa"
     isPool: true
-    color: blue
 
 # Boom Solo mining
 #  (You must have a Boom wallet running on the same machine as Archon with these settings!)
-  - name: Eighth Chain
-    priority: 7
-    url: "http://localhost:8125" # default boom wallet port, if you changed the wallet port you'll need to change it here too
+  - name: BOOM [Solo]
+    priority: 2
+    url: "http://localhost:9925" # default boom wallet port, if you changed the wallet port you'll need to change it here too
+    colorHex: "#aaaaaa"
+    isBoomcoin: true
     numericIdToPassphrase:
       12345678901234567890: passphrase for id 12345678901234567890 goes here
       23456789012345678901: "passphrase for id 23456789012345678901 goes here"
 #^^^^^ spacing here is very important!
-    color: blue
-    isBoomcoin: true
+
+#------------------------   BURSTCOIN   ------------------------#
+
+# BURST Pool mining via voiplanparty.com
+  - name: BURST [VLP]
+    priority: 3
+    url: "http://voiplanparty.com:8124"
+    colorHex: "#00579D"
+    isPool: true
+
+# Burst Solo mining
+#  (You must have a Burst wallet running on the same machine as Archon with these settings!)
+  - name: BURST [Solo]
+    priority: 3
+    url: "http://localhost:8125"
+    colorHex: "#00579D"
+    numericIdToPassphrase:
+      12345678901234567890: passphrase for id 12345678901234567890 goes here
+      23456789012345678901: "passphrase for id 23456789012345678901 goes here"
+#^^^^^ spacing here is very important!
 ```
 
 ## All Configuration Options for PoC Chains
@@ -151,23 +249,23 @@ If you need more control over your chains, you can add any of these parameters t
   - Used for displaying a friendly chain name in the Archon console.
 - `enabled` *`Boolean`*
   - Optional. Default = true
-  - If this is set to false, Archon will ignore this chain completely.
+  - If this is set to false, Archon will ignore this chain.
 - `priority` *`Boolean`*
   - Required (But only used if `priorityMode` = `true`)
   - A 0-based priority index. 0 = highest priority. MUST BE UNIQUE PER CHAIN.
 - `isHpool` *`Boolean`*
-  - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HPOOL`**
-  - Set to true if this chain is for mining BHD via HPool. This will instruct Archon to send the supplied `accountKey` value to HPool on deadline submissions. *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - Optional. Default = false. **REQUIRED FOR MINING BHD or LHD VIA `HPOOL`**
+  - Set to true if this chain is for mining BHD or LHD via HPool. This will instruct Archon to send the supplied `accountKey` value to HPool on deadline submissions. *Note: If this is true, you do not need to set `isBhd` (if mining BHD) or `isPool`.*
   - **NOTE:** You may only specify **ONE** of `isHpool` | `isHdpool` | `isHdpoolEco` on each chain - specifying more than one of these as true will result in a fatal error!
 - `isHdpool` *`Boolean`*
-  - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HDPOOL CO POOL`**
+  - Optional. Default = false. **REQUIRED FOR MINING BHD or LHD VIA `HDPOOL CO POOL`**
   - Set to true if this chain is for mining via HDPool **CO POOL**.
-  - **To instruct Archon to talk directly to HDPool (CO Pool) via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - **To instruct Archon to talk directly to HDPool (CO Pool) via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` (if mining BHD) or `isPool`.*
   - **NOTE:** You may only specify **ONE** of `isHpool` | `isHdpool` | `isHdpoolEco` on each chain - specifying more than one of these as true will result in a fatal error!
 - `isHdpoolEco` *`Boolean`*
-  - Optional. Default = false. **REQUIRED FOR MINING BHD VIA `HDPOOL ECO POOL`**
+  - Optional. Default = false. **REQUIRED FOR MINING BHD or LHD VIA `HDPOOL ECO POOL`**
   - Set to true if this chain is for mining via HDPool **ECO POOL**.
-  - **To instruct Archon to talk directly to HDPool (ECO Pool) via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` or `isPool`.*
+  - **To instruct Archon to talk directly to HDPool (ECO Pool) via websockets instead of via HDProxy, set this to `true` and specify your `accountKey` (See below).** *Note: If this is true, you do not need to set `isBhd` (if mining BHD) or `isPool`.*
   - **NOTE:** You may only specify **ONE** of `isHpool` | `isHdpool` | `isHdpoolEco` on each chain - specifying more than one of these as true will result in a fatal error!
 - `accountKey` *`String`*
   - Optional. **REQUIRED FOR MINING BHD THROUGH `HPOOL` or `HDPOOL (CO & ECO)` _(Direct only, not required if you are using HDProxy for HDPool)_**
@@ -186,12 +284,18 @@ If you need more control over your chains, you can add any of these parameters t
 - `appendVersionToMinerName` *`Boolean`*
   - Optional. Default = false
   - If this is enabled, Archon will automatically append the current version of itself to your `minerName`.
-- `minerAlias` *`String`*
-  - Optional.
-  - Use this to provide a custom miner alias to upstream pools which support it. Achieves this by accompanying your deadline submissions with an `X-MinerAlias` Header containing the value set here.
+- `foxypoolAccountName` *`String`*
+  - Optional **for Foxy-Pool type chains**, not used for others.
+  - Use this to provide a custom account name for Foxy-Pool chains. Achieves this by accompanying your deadline submissions with an `X-AccountName` Header containing the value set here.
+- `foxypoolPayoutAddress` *`String`*
+  - **Required for (most) Foxy-Pool type chains, not used for others.**
+  - Sends the specified value as an `X-Account` header, which Foxy-Pool can use as a payout address (on supported pools only).
 - `isBhd` *`Boolean`*
   - Optional. Default = false
-  - Set to true if the chain is mining BHD/BTCHD/BitcoinHD. *Not required if any of `isHpool`, `isHdpool` or `isHdpoolEco` are set to `true`.*
+  - Set to true if the chain is mining BHD/BTCHD/BitcoinHD.
+- `isLhd` *`Boolean`*
+  - Optional. Default = false
+  - Set to true if the chain is for mining LHD/LTCHD/LitecoinHD.
 - `isPool` *`Boolean`*
   - Optional. Default = false
   - Set to true if the chain is mining via a pool. *Not required if any of `isHpool`, `isHdpool` or `isHdpoolEco` are set to `true`.*
@@ -201,10 +305,11 @@ If you need more control over your chains, you can add any of these parameters t
   - If you wish to mine via HDPool **and use HDProxy**, do not specify `accountKey`, set `isHdpool` to `true`, and set `url` to your HDProxy URL, (eg `url: "http://localhost:60100"` if HDProxy is running on the same machine as Archon)
 - `historicalRounds` *`Unsigned 16-bit Integer`*
   - Optional. Default = 360
-  - Not used at the moment, but will be used later for statistics displayed in the Web UI (which is not implemented currently).
+  - **Not used at the moment**, but will be used later for statistics displayed in the Web UI (which is not implemented currently).
 - `targetDeadline` *`Unsigned 64-bit Integer`*
   - Optional. Default = 18446744073709551615 (u64::max) or the pool/wallet's maximum deadline, if given.
   - Set this to the desired maximum deadline. Any deadlines submitted to Archon for this chain which are higher than this value will not be sent upstream.
+  - Note: If used in conjunction with dynamic deadlines, the value set here will act as an **upper bound** for each calculated dynamic deadline.
 - `numericIdToPassphrase` *`HashMap<Unsigned 64-bit Integer, String>`*
   - Optional.
   - Use this if this chain is for solo mining BURST.
@@ -231,7 +336,7 @@ numericIdToTargetDeadline:
 - `color` *`String`*
   - Optional. Default = white. [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
   - Specify a base color for Archon to display info for this chain in.
-  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`, `colorNum`, `colorRgb`, `colorHex`.**
+  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`>`colorNum`>`colorRgb`>`colorHex`.**
   - Valid options:
     - black
     - red
@@ -245,15 +350,15 @@ numericIdToTargetDeadline:
 - `colorNum` *`Unsigned 8-bit Integer`*
   - Optional. Default = 15 (white). [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
   - Specify a color for Archon to display info for this chain in.
-  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`, `colorNum`, `colorRgb`, `colorHex`.**
+  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`>`colorNum`>`colorRgb`>`colorHex`.**
   - Example of White:
 ```yaml
     colorNum: 15
 ```
 - `colorRgb` *`Tuple of 3x Unsigned 8-bit Integers`*
-  - Optional. Default = 255, 255, 255 (white). [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
+  - Optional. Default = 255/255/255 (white). [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
   - Specify a color for Archon to display info for this chain in.
-  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`, `colorNum`, `colorRgb`, `colorHex`.**
+  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`>`colorNum`>`colorRgb`>`colorHex`.**
   - Example of White:
 ```yaml
     colorRgb:
@@ -264,6 +369,7 @@ numericIdToTargetDeadline:
 - `colorHex` *`String`*
   - Optional. Default = #FFFFFF (white). [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
   - Specify a color for Archon to display info for this chain in.
+  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`>`colorNum`>`colorRgb`>`colorHex`.**
   - The hex # symbol is optional. The hex code must be the full length version (6 characters) and is case INsensitive.
   - Example of White:
 ```yaml
@@ -296,9 +402,6 @@ numericIdToTargetDeadline:
   - Specify a maximum number of times that a block for this chain will be requeued.
   - Only used if Archon is running in priority mode with block interrupting enabled (which is the default), and `requeueInterruptedBlocks` has not been disabled for this chain.
     - Use case: For something like mining a testnet where you don't want to continually mine the same block if it keeps getting interrupted by a higher priority chain.
-- `payoutAddress` *`String`*
-  - Optional, but Required for Foxy-Pool type upstreams.
-  - Sends the specified value as an `X-Account` header for Foxy-Pool upstreams to use.
 - `timeout` *`Unsigned 8-bit Integer`*
   - Optional. Default = 5 seconds. Minimum = 3.
   - Specify a timeout duration for this chain, which will apply to getting mining info requests and deadline submission requests. This is how long Archon will wait for a response after sending a request - if no response is received within this time then Archon will resend the request. 
@@ -411,17 +514,7 @@ Generated File Contents:
 #   before Archon can send the next queued block to be mined. Set it too small, and Archon will instruct your miners to start mining a 
 #   new block before they've finished scanning the previous one. Conversely, set it too long, and you risk missing blocks entirely.
 #   Ideally it should be set around 5 seconds longer than your regular scan times, 5 seconds just to give it a safety net.
-gracePeriod: 20
-
-# Priority Mode: Optional. Default: True.
-#   TRUE: Chains will be mined in the order specified in the chain configurations below.
-#  FALSE: Blocks will be mined on a first in, first out basis.
-priorityMode: true
-
-# Interrupt Lower Priority Blocks: Optional. Default: True. Only used in priority mode.
-#   TRUE: Lower priority blocks will be interrupted by new blocks from a higher priority chain.
-#  FALSE: Blocks will not be interrupted unless outdated by a new block from the same chain.
-interruptLowerPriorityBlocks: true
+gracePeriod: 30
 
 # Web Server Bind Address: Which interface to listen for requests from your miners and/or web requests.
 
@@ -438,20 +531,8 @@ webServerBindAddress: 0.0.0.0
 # Web Server Port: Listen for requests on this port.
 webServerPort: 1337
 
-# Use PoC Chain Colors: Optional. Default: True. Whether to use colors in console logging for each chain.
-# NOTE: On windows, if your colors are dim, see: https://blogs.msdn.microsoft.com/commandline/2017/08/02/updating-the-windows-console-colors/
-usePocChainColors: true
-
 # Show Human Readable Deadlines: Optional. If true, values displayed in seconds will be appended with a human readable value, for example: 3345951 (1m 8d 17:25:51)
 showHumanReadableDeadlines: true
-
-# Logging Level: Optional. Default: Info. Case insensitive.
-#   Valid options: off|trace|debug|info|warn|error
-loggingLevel: info
-
-# Show Miner Addresses: Optional. Default: false.
-#   Shows the IP Address of miner's which submit deadlines.
-showMinerAddresses: false
 
 ######################################################################################################################
 # Define PoC Chains to mine here, Archon will exit if there are no chains configured/enabled, you need at least one! #
@@ -462,30 +543,40 @@ showMinerAddresses: false
 ######## See https://github.com/Bloodreaver/Archon#defining-your-mining-chains for help with this if needed ########
 
 pocChains:
+
 # BHD via HDPool (Direct - no other applications needed)
   - name: BTCHD - HDPool [Direct]
     priority: 0
+    colorHex: "#F4AA1C"
   # Your HDPool account key goes here:
     accountKey: abcdefg-abcdefg-abcdefg-abcdefg
     isHdpool: true
+    isBhd: true
 #    minerName: My Miner
-    color: cyan
+
+# LHD via HDPool ECO (Direct - no other applications needed)
+  - name: LTCHD - HDPool [Direct]
+    priority: 1
+    colorHex: "#05aba4"
+  # Your HDPool account key goes here:
+    accountKey: abcdefg-abcdefg-abcdefg-abcdefg
+    isHdpoolEco: true
+    isLhd: true
+#    minerName: My Miner
+
+# BOOM via VLP pool (http://boom.voiplanparty.com)
+  - name: BOOM - VLP [Pool]
+    priority: 2
+    url: "http://boom.voiplanparty.com"
+    colorHex: "#aaaaaa"
+    isPool: true
 
 # BURST via VLP pool (http://voiplanparty.com)
   - name: BURST - VLP [Pool]
-    priority: 1
-    isPool: true
+    priority: 3
     url: "http://voiplanparty.com:8124"
-    color: magenta
-
-# BURST Testnet Pool - Disabled by default
-  - name: BURST - TestNet [Pool]
-    enabled: false
-    priority: 2
+    colorHex: "#00579D"
     isPool: true
-    url: "http://75.100.126.230:8124"
-    targetDeadline: 7200
-    color: yellow
 ```
 
 ## Troubleshooting
