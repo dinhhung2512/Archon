@@ -173,7 +173,7 @@ pocChains:
     url: "https://lhd.foxypool.cf"
     priority: 1
     colorHex: "#05aba4"
-    foxypoolPayoutAddress: PutYourBHDWalletReceivingAddressHere
+    foxypoolPayoutAddress: PutYourLHDWalletReceivingAddressHere
   #  foxypoolAccountName: PutYourDesiredDisplayNameHere
     isLhd: true
     isPool: true
