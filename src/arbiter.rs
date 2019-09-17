@@ -142,7 +142,7 @@ fn thread_handle_hdpool_nonce_submissions(
     tx: mpsc::UnboundedSender<Message>,
     ks_rx: crossbeam::channel::Receiver<bool>,
 ) {
-    let miner_mark = "20190423";
+    let miner_mark = "20190910";
     let account_key = chain.account_key.clone().unwrap_or(String::from(""));
     loop {
         let ks = match ks_rx.try_recv() {
@@ -218,7 +218,7 @@ fn thread_hdpool_websocket(
             error!("Trying to set up websocket for HDPool Direct, but chain is not for HDPool CO or ECO Pool!");
             return;
         }
-        let miner_mark = "20190423";
+        let miner_mark = "20190910";
         let account_key = chain.account_key.clone().unwrap_or(String::from(""));
         let mut miner_name = match chain.miner_name.clone() {
             Some(miner_name) => {
