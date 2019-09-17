@@ -91,10 +91,10 @@ pub struct PocChain {
     pub append_version_to_miner_name: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub miner_alias: Option<String>,
+    pub foxypool_account_name: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub payout_address: Option<String>,
+    pub foxypool_payout_address: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u8>,

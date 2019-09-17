@@ -474,7 +474,7 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn setup_ansi_support() {
     if ansi_term::enable_ansi_support().is_ok() {}
-    }
+}
 
 #[cfg(not(target_os = "windows"))]
 fn setup_ansi_support() {}
@@ -1401,8 +1401,8 @@ fn get_chain_from_index(index: u8) -> PocChain {
         requeue_interrupted_blocks: None,
         maximum_requeue_times: None,
         append_version_to_miner_name: None,
-        miner_alias: None,
-        payout_address: None,
+        foxypool_account_name: None,
+        foxypool_payout_address: None,
         timeout: None,
         submit_attempts: None,
     };

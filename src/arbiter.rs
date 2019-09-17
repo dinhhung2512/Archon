@@ -36,8 +36,8 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
     // get current chain
     let chain = super::get_chain_from_index(chain_index);
     let mut default_headers = header::HeaderMap::new();
-    if chain.miner_alias.is_some() {
-        default_headers.insert("x-mineralias", get_header_value(chain.miner_alias.unwrap()));
+    if chain.foxypool_account_name.is_some() {
+        default_headers.insert("x-accountname", get_header_value(chain.foxypool_account_name.unwrap()));
     }
     // if this chain is for hpool, add a default header to this client with the user's account key
     if chain.is_hpool.unwrap_or_default() {
@@ -66,8 +66,8 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
         );
         default_headers.insert("X-Miner", get_header_value(app_name_ver.clone()));
     } else {
-        if chain.payout_address.is_some() && chain.account_key.is_none() {
-            default_headers.insert("X-Account", get_header_value(chain.payout_address.unwrap()));
+        if chain.foxypool_payout_address.is_some() && chain.account_key.is_none() {
+            default_headers.insert("X-Account", get_header_value(chain.foxypool_payout_address.unwrap()));
         }
     }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
@@ -407,7 +407,7 @@ fn thread_get_mining_info(
                 thread_hdpool_websocket(chain_copy, hdpool_mining_info_sender.clone(), hdpool_nonce_submission_receiver);
             } else {
                 *crate::HDPOOL_SUBMIT_NONCE_SENDER_BHD.lock().unwrap() = Some(hdpool_nonce_submission_sender.clone());
-            thread_hdpool_websocket(chain_copy, hdpool_mining_info_sender.clone(), hdpool_nonce_submission_receiver);
+                thread_hdpool_websocket(chain_copy, hdpool_mining_info_sender.clone(), hdpool_nonce_submission_receiver);
             }
         });
     }
