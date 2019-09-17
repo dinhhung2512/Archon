@@ -229,15 +229,46 @@ numericIdToTargetDeadline:
   12345678901234567890: 86400          # 1 day target deadline for ID 12345678901234567890
 ```
 - `color` *`String`*
-  - Required.
-  - Specify a color for Archon to display info for this chain in.
-  - Valid colors:
+  - Optional. Default = white. [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
+  - Specify a base color for Archon to display info for this chain in.
+  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`, `colorNum`, `colorRgb`, `colorHex`.**
+  - Valid options:
+    - black
+    - red
     - green
     - yellow
     - blue
     - magenta
+    - purple
     - cyan
     - white
+- `colorNum` *`Unsigned 8-bit Integer`*
+  - Optional. Default = 15 (white). [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
+  - Specify a color for Archon to display info for this chain in.
+  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`, `colorNum`, `colorRgb`, `colorHex`.**
+  - Example of White:
+```yaml
+    colorNum: 15
+```
+- `colorRgb` *`Tuple of 3x Unsigned 8-bit Integers`*
+  - Optional. Default = 255, 255, 255 (white). [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
+  - Specify a color for Archon to display info for this chain in.
+  - **NOTE: To avoid confusion, only use one color option per chain. Color is set in the following priority: `color`, `colorNum`, `colorRgb`, `colorHex`.**
+  - Example of White:
+```yaml
+    colorRgb:
+      - 255
+      - 255
+      - 255
+```
+- `colorHex` *`String`*
+  - Optional. Default = #FFFFFF (white). [Colour Chart](https://upload.wikimedia.org/wikipedia/commons/1/15/Xterm_256color_chart.svg)
+  - Specify a color for Archon to display info for this chain in.
+  - The hex # symbol is optional. The hex code must be the full length version (6 characters) and is case INsensitive.
+  - Example of White:
+```yaml
+    colorHex: "#ffffff"
+```
 - `getMiningInfoInterval` *`Unsigned 8-bit Integer`*
   - Optional. Default = 3 seconds
   - Specify the interval, in seconds, that Archon will request mining info for this chain. Minimum is 1 second.

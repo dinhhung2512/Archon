@@ -3,6 +3,7 @@ use actix_web::http::{header, Method, StatusCode};
 use actix_web::{server, App, Error, HttpRequest, HttpResponse};
 use futures::future::{result, FutureResult};
 use std::string::*;
+use ansi_term::Colour;
 
 use crate::config::{Config, PocChain};
 
@@ -436,7 +437,6 @@ pub fn get_user_agent_str() -> String {
 }
 
 pub fn start_server() {
-    use colored::Colorize;
     use std::process::exit;
     let archon_web_server_sys = actix::System::new("archon");
     server::new(|| {
@@ -454,9 +454,7 @@ pub fn start_server() {
         error!("Couldn't bind to {}:{}! Please ensure it isn't in use! - {:?}",  &crate::CONF.web_server_bind_address, &crate::CONF.web_server_port, why);
         println!(
             "\n  {}",
-            "Execution completed. Press enter to exit."
-                .red()
-                .underline()
+            Colour::Red.underline().paint("Execution completed. Press enter to exit.")
         );
 
         let mut blah = String::new();

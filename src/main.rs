@@ -1,9 +1,7 @@
 #![feature(vec_remove_item)]
-#[cfg(target_os = "windows")]
-use ansi_term;
+
+use ansi_term::{Colour, Colour::RGB, Colour::Fixed};
 use chrono::{DateTime, Local};
-use colored;
-use colored::Colorize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::process::exit;
@@ -94,15 +92,15 @@ lazy_static! {
             Config::parse_config(file).map_err(|why| {
                 println!("  {}", why);
                 query_create_default_config();
-                println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+                println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
                 let mut blah = String::new();
                 std::io::stdin().read_line(&mut blah).expect("FAIL");
                 exit(0);
             })
         }).map_err(|why| {
-            println!("  {} {}\n  {}", "ERROR".red().underline(), "An error was encountered while attempting to open the config file.".red(), why);
+            println!("  {} {}\n  {}", Colour::Red.underline().paint("ERROR"), Colour::Red.paint("An error was encountered while attempting to open the config file."), why);
             query_create_default_config();
-            println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+            println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
             let mut blah = String::new();
             std::io::stdin().read_line(&mut blah).expect("FAIL");
             exit(0)
@@ -126,24 +124,19 @@ fn main() {
 
     info!("{} v{} started", app_name, VERSION);
 
-    println!(
-        "{}",
-        format!("  {} v{} - POWER OVERWHELMING!", app_name, VERSION)
-            .cyan()
-            .bold()
-    );
+    println!("{}", Colour::Cyan.bold().paint(format!("  {} v{} - POWER OVERWHELMING!", app_name, VERSION)));
     println!("  {} {} | {} {}",
-        "Created by".cyan().bold(),
-        "Ayaenah Bloodreaver".cyan().underline(),
-        "Discord Invite:".red(),
-        "https://discord.gg/ZdVbrMn".yellow(),
+        Colour::Cyan.bold().paint("Created by"),
+        Colour::Cyan.underline().paint("Ayaenah Bloodreaver"),
+        Colour::Red.paint("Discord Invite:"),
+        Colour::Yellow.paint("https://discord.gg/ZdVbrMn"),
     );
     println!("    {} {}",
-        "With special thanks to:".red().bold(),
-        "Haitch | Avanth | Karralie | Romanovski".red()
+        Colour::Red.bold().paint("With special thanks to:"),
+        Colour::Red.paint("Haitch | Avanth | Karralie | Romanovski")
     );
     println!("      {}",
-        "Thanks guys! <3".magenta(),
+        Colour::Purple.paint("Thanks guys! <3"),
     );
     if crate::CONF.poc_chains.is_some() {
         let archon_logging_warning = match archon_log_warn {
@@ -151,12 +144,12 @@ fn main() {
             false => "",
         };
         println!("\n  {} {} {}", 
-            get_time().white(), 
-            "Config:".red(), 
+            get_time(), 
+            Colour::Red.paint("Config:"),
             format!("{} {}{}",
-                "Archon Logging Level:".green(),
-                archon_logging_info.yellow(),
-                archon_logging_warning.red()
+                Colour::Green.paint("Archon Logging Level:"),
+                Colour::Yellow.paint(archon_logging_info),
+                Colour::Red.paint(archon_logging_warning)
             )
         );
 
@@ -166,66 +159,66 @@ fn main() {
                 false => "",
             };
             println!("  {} {} {}", 
-                get_time().white(), 
-                "Config:".red(), 
+                get_time(), 
+                Colour::Red.paint("Config:"), 
                 format!("{} {}{}",
-                    "Dependency Logging Level:".green(),
-                    dep_logging_info.yellow(),
-                    dep_logging_warning.red()
+                    Colour::Green.paint("Dependency Logging Level:"),
+                    Colour::Yellow.paint(dep_logging_info),
+                    Colour::Red.paint(dep_logging_warning)
                 )
             );
         }
 
         println!("  {} {} {}",
-            get_time().white(),
-            "Config:".red(),
+            get_time(),
+            Colour::Red.paint("Config:"),
             format!("{} {}",
-                "Web Server Binding:".green(),
-                format!("http://{}:{}",
+                Colour::Green.paint("Web Server Binding:"),
+                Colour::Yellow.paint(format!("http://{}:{}",
                     crate::CONF.web_server_bind_address,
                     crate::CONF.web_server_port
-                ).yellow()
+                ))
             )
         );
         if crate::CONF.priority_mode.unwrap_or(true) {
             println!("  {} {} {}",
-                get_time().white(),
-                "Config:".red(),
-                format!("{} {}", "Queuing Mode:".green(), "Priority".yellow())
+                get_time(),
+                Colour::Red.paint("Config:"),
+                format!("{} {}", Colour::Green.paint("Queuing Mode:"), Colour::Yellow.paint("Priority"))
             );
             if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
                 println!("  {} {} {}",
-                    get_time().white(),
-                    "Config:".red(),
-                    format!("{} {}", "Interrupt Lower Priority Blocks:".green(), "Yes".yellow())
+                    get_time(),
+                    Colour::Red.paint("Config:"),
+                    format!("{} {}", Colour::Green.paint("Interrupt Lower Priority Blocks:"), Colour::Yellow.paint("Yes"))
                 );
             } else {
                 // interrupt lower priority blocks off
                 println!("  {} {} {}",
-                    get_time().white(),
-                    "Config:".red(),
-                    format!("{} {}", "Interrupt Lower Priority Blocks:".green(), "No".yellow())
+                    get_time(),
+                    Colour::Red.paint("Config:"),
+                    format!("{} {}", Colour::Green.paint("Interrupt Lower Priority Blocks:"), Colour::Yellow.paint("No"))
                 );
             }
         } else {
             println!("  {} {} {}",
-                get_time().white(),
-                "Config:".red(),
-                format!("{} {}", "Queuing Mode:".green(), "First In, First Out".yellow())
+                get_time(),
+                Colour::Red.paint("Config:"),
+                format!("{} {}", Colour::Green.paint("Queuing Mode:"), Colour::Yellow.paint("First In, First Out"))
             );
         }
         println!("  {} {} {}",
-            get_time().white(),
-            "Config:".red(),
+            get_time(),
+            Colour::Red.paint("Config:"),
             format!("{} {}",
-                "Grace Period:".green(),
-                format!("{} seconds", crate::CONF.grace_period).yellow()
+                Colour::Green.paint("Grace Period:"),
+                Colour::Yellow.paint(format!("{} seconds", crate::CONF.grace_period))
             )
         );
         println!("  {} {} {}",
-            get_time().white(),
-            "Config:".red(),
-            "PoC Chains:".green()
+            get_time(),
+            Colour::Red.paint("Config:"),
+            Colour::Green.paint("PoC Chains:")
         );
         let mut chain_counter = 0u8;
         let mut multiple_same_priority_chains = false;
@@ -234,6 +227,7 @@ fn main() {
         let mut invalid_url_warnings = String::from("");
         for inner in &crate::CONF.poc_chains {
             for chain in inner {
+                // check for configured passphrases which will not be used
                 if chain.numeric_id_to_passphrase.is_some()
                     && (chain.is_pool.unwrap_or_default()
                         || chain.is_bhd.unwrap_or_default()
@@ -252,16 +246,16 @@ fn main() {
                     }
                 }
                 if chain.enabled.unwrap_or(true) {
-                    let chain_color = get_color(&*chain.color);
+                    let chain_color = get_color(chain.clone());
                     if get_num_chains_with_priority(chain.priority) > 1 {
                         multiple_same_priority_chains = true;
                     }
                     if (chain.is_hdpool.unwrap_or_default() || chain.is_hdpool_eco.unwrap_or_default()) && chain.is_hpool.unwrap_or_default() {
                         // fatal error - can't have chain defined as for both HPOOL and HDPOOL
-                        println!("\n  {}", format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name).red().underline());
+                        println!("\n  {}", Colour::Red.underline().paint(format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name)));
                         error!("The chain \"{}\" is defined as both HDPOOL and HPOOL. Pick one!", &*chain.name);
 
-                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+                        println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
 
                         let mut blah = String::new();
                         std::io::stdin().read_line(&mut blah).expect("FAIL");
@@ -269,10 +263,10 @@ fn main() {
                     }
                     if chain.is_hdpool.unwrap_or_default() && chain.is_hdpool_eco.unwrap_or_default() {
                         // fatal error - can't have chain defined as for both HDPOOL and HDPOOL ECO
-                        println!("\n  {}", format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HDPOOL ECO. Pick one!", &*chain.name).red().underline());
+                        println!("\n  {}", Colour::Red.underline().paint(format!("FATAL ERROR: The chain \"{}\" is defined as both HDPOOL and HDPOOL ECO. Pick one!", &*chain.name)));
                         error!("The chain \"{}\" is defined as both HDPOOL and HDPOOL ECO. Pick one!", &*chain.name);
 
-                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+                        println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
 
                         let mut blah = String::new();
                         std::io::stdin().read_line(&mut blah).expect("FAIL");
@@ -298,7 +292,7 @@ fn main() {
                         error!(r#"The chain "{}" has both an account key and payout address defined. If mining to foxy pool, only set Payout Address! If mining to HDPool / HPool / BPool, only set Account Key!"#, &*chain.name);
                         println!("\n  {}", format!(r#"FATAL ERROR: The chain "{}" has both an account key and payout address defined. If mining to foxy pool, only set Payout Address! If mining to HDPool / HPool / BPool, only set Account Key!"#, &*chain.name).red().underline());
 
-                        println!("\n  {}", "Execution completed. Press enter to exit.".red().underline());
+                        println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
 
                         let mut blah = String::new();
                         std::io::stdin().read_line(&mut blah).expect("FAIL");
@@ -330,48 +324,48 @@ fn main() {
                         if crate::CONF.interrupt_lower_priority_blocks.unwrap_or(true) {
                             let requeue_str;
                             if !chain.requeue_interrupted_blocks.unwrap_or(true) {
-                                requeue_str = "No".red();
+                                requeue_str = Colour::Red.paint(String::from("No"));
                             } else {
                                 let requeue_times_str = match chain.maximum_requeue_times {
                                     Some(max_requeues) => format!(" ({}x)", max_requeues),
                                     None => String::from("")
                                 };
-                                requeue_str = format!("Yes{}", requeue_times_str).as_str().color(chain_color);
+                                requeue_str = chain_color.paint(format!("Yes{}", requeue_times_str));
                             }
                             println!("{}",
                                 format!("    {}\n      {} @ {}\n        {} {} | {} {} | {} {}",
-                                    format!("Chain #{}:", chain_counter).color(chain_color),
-                                    format!("{}", &*chain.name).color(chain_color).bold(),
-                                    format!("{}", &*chain_url).color(chain_color),
-                                    "Priority:".color(chain_color).bold(),
-                                    format!("#{}", &chain.priority + 1).color(chain_color),
-                                    "Target Deadline:".color(chain_color).bold(),
-                                    format!("{}", chain_tdl_str).color(chain_color),
-                                    "Requeue:".color(chain_color).bold(),
+                                    chain_color.paint(format!("Chain #{}:", chain_counter)),
+                                    chain_color.bold().paint(format!("{}", &*chain.name)),
+                                    chain_color.paint(format!("{}", &*chain_url)),
+                                    chain_color.bold().paint("Priority:"),
+                                    chain_color.paint(format!("#{}", &chain.priority + 1)),
+                                    chain_color.bold().paint("Target Deadline:"),
+                                    chain_color.paint(format!("{}", chain_tdl_str)),
+                                    chain_color.bold().paint("Requeue:"),
                                     format!("{}", requeue_str),
                                 )
                             );
                         } else {
                             println!("{}",
                                 format!("    {}\n      {} @ {}\n        {} {} | {} {}",
-                                    format!("Chain #{}:", chain_counter).color(chain_color),
-                                    format!("{}", &*chain.name).color(chain_color).bold(),
-                                    format!("{}", &*chain_url).color(chain_color),
-                                    "Priority:".color(chain_color).bold(),
-                                    format!("#{}", &chain.priority + 1).color(chain_color),
-                                    "Target Deadline:".color(chain_color).bold(),
-                                    format!("{}", chain_tdl_str).color(chain_color),
+                                    chain_color.paint(format!("Chain #{}:", chain_counter)),
+                                    chain_color.bold().paint(format!("{}", &*chain.name)),
+                                    chain_color.paint(format!("{}", &*chain_url)),
+                                    chain_color.bold().paint("Priority:"),
+                                    chain_color.paint(format!("#{}", &chain.priority + 1)),
+                                    chain_color.bold().paint("Target Deadline:"),
+                                    chain_color.paint(format!("{}", chain_tdl_str)),
                                 )
                             );
                         }
                     } else {
                         println!("{}",
                             format!("    {}\n      {} @ {}\n        {} {}",
-                                format!("Chain #{}:", chain_counter).color(chain_color),
-                                format!("{}", &*chain.name).color(chain_color).bold(),
-                                format!("{}", &*chain_url).color(chain_color),
-                                "Target Deadline:".color(chain_color).bold(),
-                                format!("{}", chain_tdl_str).color(chain_color),
+                                chain_color.paint(format!("Chain #{}:", chain_counter)),
+                                chain_color.bold().paint(format!("{}", &*chain.name)),
+                                chain_color.paint(format!("{}", &*chain_url)),
+                                chain_color.bold().paint("Target Deadline:"),
+                                chain_color.paint(format!("{}", chain_tdl_str)),
                             )
                         );
                     }
@@ -385,32 +379,28 @@ fn main() {
         {
             if chain_counter == 0 {
                 println!("  {} {} {}",
-                    get_time().white(),
-                    "ERROR".red().underline(),
-                    "You do not have any PoC Chains enabled. Archon has nothing to do!".yellow()
+                    get_time(),
+                    Colour::Red.underline().paint("ERROR"),
+                    Colour::Yellow.paint("You do not have any PoC Chains enabled. Archon has nothing to do!")
                 );
                 error!("There are no PoC Chains configured.");
             } else if CONF.priority_mode.unwrap_or(true) && multiple_same_priority_chains {
                 println!("  {} {} {}",
-                    get_time().white(),
-                    "ERROR".red().underline(),
-                    "You have multiple chains configured with the same priority level! Priorities must be unique!".yellow()
+                    get_time(),
+                    Colour::Red.underline().paint("ERROR"),
+                    Colour::Yellow.paint("You have multiple chains configured with the same priority level! Priorities must be unique!")
                 );
                 error!("Multiple PoC Chains are configured with the same priority level. Priority levels must be unique.");
             } else if invalid_url_warnings.len() > 0 {
                 println!("\n  {} {} - Invalid Chain URL found\n{}",
-                    get_time().white(),
-                    "ERROR".red().underline(),
-                    invalid_url_warnings.red(),
+                    get_time(),
+                    Colour::Red.underline().paint("ERROR"),
+                    Colour::Red.paint(&invalid_url_warnings),
                     );
-                error!("Invalid chain url found: {}", invalid_url_warnings);
+                error!("Invalid chain url found: {}", &invalid_url_warnings);
             }
 
-            println!("\n  {}",
-                "Execution completed. Press enter to exit."
-                    .red()
-                    .underline()
-            );
+            println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
 
             let mut blah = String::new();
             std::io::stdin().read_line(&mut blah).expect("FAIL");
@@ -419,48 +409,21 @@ fn main() {
         if unused_passphrase_warnings.len() > 0 {
             let border = String::from("------------------------------------------------------------------------------------------");
             println!("{}\n  {}\n{}\n{}\n      {}\n{}",
-                border.red().bold(),
-                "SECURITY WARNING:".red(),
-                border.red().bold(),
-                unused_passphrase_warnings.red(),
-                "You should remove these from your Archon config file for security purposes!"
-                    .yellow(),
-                border.red().bold(),
+                Colour::Red.bold().paint(&border),
+                Colour::Red.paint("SECURITY WARNING:"),
+                Colour::Red.bold().paint(&border),
+                Colour::Red.paint(&unused_passphrase_warnings),
+                Colour::Yellow.paint("You should remove these from your Archon config file for security purposes!"),
+                Colour::Red.bold().paint(&border),
             );
-            warn!("Unused passphrases found in archon.yaml: {}", unused_passphrase_warnings);
+            warn!("Unused passphrases found in archon.yaml: {}", &unused_passphrase_warnings);
         }
         if account_key_warnings.len() > 0 {
-            println!("\n  {}", format!("WARNING:\n{}", account_key_warnings).red());
-        }
-
-        let valid_colors = ["green", "yellow", "blue", "magenta", "cyan", "white"];
-        let mut invalid_color_found = false;
-        for inner in &crate::CONF.poc_chains {
-            for chain in inner {
-                if chain.enabled.unwrap_or(true) {
-                    if !valid_colors.contains(&&*chain.color) {
-                        println!("  {} {}", get_time().white(), format!("WARNING The {} chain uses the color \"{}\" which is invalid. Will pick a random valid color.", &*chain.name, &*chain.color).yellow());
-                        invalid_color_found = true;
-                    }
-                }
-            }
-        }
-        if invalid_color_found {
-            let mut valid_colors_str = String::from("");
-            for color in &valid_colors {
-                valid_colors_str
-                    .push_str(format!("{}|", format!("{}", *color).color(*color)).as_str());
-            }
-            valid_colors_str.truncate(valid_colors_str.len() - 1);
-            println!(
-                "  {} {}",
-                get_time().white(),
-                format!("Valid colors: {}", valid_colors_str)
-            );
+            println!("\n  {}", Colour::Red.paint(format!("WARNING:\n{}", account_key_warnings)));
         }
 
         // start mining info polling thread
-        println!("  {} {}", get_time().white(), "Starting upstream mining info polling thread.");
+        println!("  {} {}", get_time(), "Starting upstream mining info polling thread.");
         let mi_thread = thread::spawn(move || {
             arbiter::thread_arbitrate();
         });
@@ -477,17 +440,17 @@ fn main() {
             thread_monitor_capacity();
         });
 
-        println!("  {} {}", get_time().white(), "Starting web server.".green() );
+        println!("  {} {}", get_time(), Colour::Green.paint("Starting web server.") );
         web::start_server();
         mi_thread.join().expect("Failed to join mining info thread.");
         queue_proc_thread.join().expect("Failed to join queue processing thread.");
         version_check_thread.join().expect("Failed to join version check thread.");
         capacity_monitor_thread.join().expect("Failed to join capacity monitor thread.");
     } else {
-        println!("  {} {} {}", get_time().white(), "ERROR".red().underline(), "You do not have any PoC Chains configured. Archon has nothing to do!".yellow());
+        println!("  {} {} {}", get_time(), Colour::Red.underline().paint("ERROR"), Colour::Yellow.paint("You do not have any PoC Chains configured. Archon has nothing to do!"));
     }
 
-    println!("\n  {}", "Execution completed. Press enter to exit." .red().underline());
+    println!("\n  {}", Colour::Red.underline().paint("Execution completed. Press enter to exit."));
 
     let mut blah = String::new();
     std::io::stdin().read_line(&mut blah).expect("FAIL");
@@ -495,10 +458,8 @@ fn main() {
 
 #[cfg(target_os = "windows")]
 fn setup_ansi_support() {
-    if !ansi_term::enable_ansi_support().is_ok() {
-        colored::control::set_override(false);
+    if ansi_term::enable_ansi_support().is_ok() {}
     }
-}
 
 #[cfg(not(target_os = "windows"))]
 fn setup_ansi_support() {}
@@ -532,14 +493,14 @@ fn setup_logging() -> (String, bool, String, bool) {
     let log_level = get_logging_level_from_string(&logging_level, None);
     // set warning if debug|trace level
     let logging_level_warning = log_level == log::LevelFilter::Debug || log_level == log::LevelFilter::Trace;
-    let console_logging_message = format!("{}", format!("{}", uppercase_first(logging_level.as_str())).yellow());
+    let console_logging_message = format!("{}", Colour::Yellow.paint(format!("{}", uppercase_first(logging_level.as_str()))));
     if log_level != log::LevelFilter::Off {
         // setup dependency logging level
         let dep_logging_level = CONF.dependency_logging_level.clone().unwrap_or(String::from("info")).to_lowercase();
         let dependency_log_level = get_logging_level_from_string(&dep_logging_level, None);
         // set warning if debug|trace level
         let dep_logging_level_warning = dependency_log_level == log::LevelFilter::Debug || dependency_log_level == log::LevelFilter::Trace;
-        let dependency_console_logging_message = format!("{}", format!("{}", uppercase_first(dep_logging_level.as_str())).yellow());
+        let dependency_console_logging_message = format!("{}", Colour::Yellow.paint(format!("{}", uppercase_first(dep_logging_level.as_str()))));
         // create logs directory
         if std::fs::create_dir("logs").is_ok() {}
         // grab number of files to keep in rotation from loaded config
@@ -617,15 +578,15 @@ fn thread_check_latest_githib_version() {
                             if current_version < latest && !current_version.is_prerelease() && latest.is_prerelease() {
                                 let border = "------------------------------------------------------------------------------------------";
                                 let headline = "  NEW PRE-RELEASE VERSION AVAILABLE ==> ";
-                                println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new pre-release available on GitHub.\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
-                                    border, headline, tag_name_string, border, border).red());
+                                println!("{}", Colour::Red.paint(format!("\n{}\n{}v{}\n{}\n    There is a new pre-release available on GitHub.\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
+                                    border, headline, tag_name_string, border, border)));
                                 info!("VERSION CHECK: Pre-release v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
                             } else // if latest is not pre-release or current & latest are both pre-release
                             if !latest.is_prerelease() || (latest.is_prerelease() && current_version.is_prerelease()) {
                                 let border = "------------------------------------------------------------------------------------------";
                                 let headline = "  NEW VERSION AVAILABLE ==> ";
-                                println!("{}", format!("\n{}\n{}v{}\n{}\n    There is a new release available on GitHub. Please update ASAP!\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
-                                    border, headline, tag_name_string, border, border).red());
+                                println!("{}", Colour::Red.paint(format!("\n{}\n{}v{}\n{}\n    There is a new release available on GitHub. Please update ASAP!\n      https://github.com/Bloodreaver/Archon/releases\n{}\n",
+                                    border, headline, tag_name_string, border, border)));
                                 info!("VERSION CHECK: v{} is available on GitHub - See https://github.com/Bloodreaver/Archon/releases", tag_name_string);
                             }
                         } else {
@@ -650,18 +611,102 @@ fn uppercase_first(s: &str) -> String {
     }
 }
 
-fn get_color(col: &str) -> &str {
+fn get_color(chain: PocChain) -> Colour {
     // if using poc chain colors is disabled in config, return white here
     if !crate::CONF.use_poc_chain_colors.unwrap_or(true) {
-        return "white";
+        return Colour::White;
     }
-    use rand::seq::SliceRandom;
-    let valid_colors = ["green", "yellow", "blue", "magenta", "cyan", "white"];
-    if !valid_colors.contains(&col) {
-        let mut rng = rand::thread_rng();
-        return valid_colors.choose(&mut rng).unwrap();
+    if chain.color.is_some() {
+        match chain.color.unwrap().to_lowercase().as_str() {
+            "black" => return Colour::Black,
+            "red" => return Colour::Red,
+            "green" => return Colour::Green,
+            "yellow" => return Colour::Yellow,
+            "blue" => return Colour::Blue,
+            "magenta" => return Colour::Purple,
+            "purple" => return Colour::Purple,
+            "cyan" => return Colour::Cyan,
+            "white" => return Colour::White,
+            _ => {}
+        }
     }
-    return &col;
+    if chain.color_num.is_some() {
+        return Fixed(chain.color_num.unwrap());
+    }
+    if chain.color_rgb.is_some() {
+        match chain.color_rgb.unwrap() {
+            (r, g, b) => return RGB(r, g, b)
+        }
+    }
+    if chain.color_hex.is_some() {
+        // get values for red, green and blue
+        let (r, g, b) = hex_to_rgb(chain.color_hex.unwrap());
+        return RGB(r, g, b);
+    }
+    return RGB(255, 255, 255);
+}
+
+fn hex_to_rgb(hex: String) -> (u8, u8, u8) {
+    if hex.len() == 6 || hex.len() == 7 {
+        let mut hex_str = hex.clone();
+        hex_str.retain(|c| is_hex_char(c));
+        if hex_str.len() == 6 {
+            let mut i = 0;
+            let mut r = 0u8;
+            let mut g = 0u8;
+            let mut b = 0u8;
+            for c in hex_str.chars() {
+                let val = get_hex_value(c, i % 2 == 0);
+                match i {
+                    0..=1 => r += val,
+                    2..=3 => g += val,
+                    4..=5 => b += val,
+                    _ => {}
+                }
+                i += 1;
+            }
+            return (r, g, b);
+        }
+    }
+    return (255, 255, 255);
+}
+
+fn get_hex_value(c: char, sixteenth: bool) -> u8 {
+    let base_value = match c {
+        '0' => 0,
+        '1' => 1,
+        '2' => 2,
+        '3' => 3,
+        '4' => 4,
+        '5' => 5,
+        '6' => 6,
+        '7' => 7,
+        '8' => 8,
+        '9' => 9,
+        'a' => 10,
+        'A' => 10,
+        'b' => 11,
+        'B' => 11,
+        'c' => 12,
+        'C' => 12,
+        'd' => 13,
+        'D' => 13,
+        'e' => 14,
+        'E' => 14,
+        'f' => 15,
+        'F' => 15,
+        _ => 0,
+    };
+    if sixteenth {
+        base_value * 16
+    } else {
+        base_value
+    }
+}
+
+fn is_hex_char(c: char) -> bool {
+    let valid_chars = String::from("0123456789abcdefABCDEF");
+    valid_chars.contains(c)
 }
 
 fn get_cached_mining_info() -> Option<(u8, u32, String, u64)> {
@@ -778,11 +823,11 @@ fn query_create_default_config() {
     println!("\n  Would you like to create a default configuration file?");
     println!(
         "  {}",
-        "WARNING: THIS WILL OVERWRITE AN EXISTING FILE AND CANNOT BE UNDONE!".yellow()
+        Colour::Yellow.paint("WARNING: THIS WILL OVERWRITE AN EXISTING FILE AND CANNOT BE UNDONE!")
     );
     println!(
         "  {}",
-        "Type \"y\" and <Enter> to create the file, or just hit <Enter> to exit:".cyan()
+        Colour::Cyan.paint("Type \"y\" and <Enter> to create the file, or just hit <Enter> to exit:")
     );
     let mut resp = String::new();
     match std::io::stdin().read_line(&mut resp) {
@@ -797,14 +842,14 @@ fn query_create_default_config() {
                             Ok(_) => {
                                 println!(
                                     "  {}",
-                                    "Default config file saved to archon.yaml".green()
+                                    Colour::Green.paint("Default config file saved to archon.yaml")
                                 );
                             }
                             Err(_) => {}
                         };
                     }
                     Err(err) => {
-                        println!("  {}", format!("Error saving config file: {}", err).red())
+                        println!("  {}", Colour::Red.paint(format!("Error saving config file: {}", err)))
                     }
                 };
             }
@@ -817,16 +862,16 @@ fn query_create_default_config() {
 
 fn print_forked_and_queued(chain_index: u8, height: u32) {
     let chain = get_chain_from_index(chain_index);
-    let color = get_color(&*chain.color);
+    let chain_color = get_color(chain.clone());
     let border = String::from("==========================================================================================");
     println!("{}\n  {} {}\n{}",
-        border.yellow(),
-        get_time().white(),
+        Colour::Yellow.paint(&border),
+        get_time(),
         format!("{} => FORK DETECTED: BLOCK {} REQUEUED",
-            &*chain.name.color(color),
-            format!("#{}", height).color(color),
+            chain_color.paint(&*chain.name),
+            chain_color.paint(format!("#{}", height)),
         ),
-        border.yellow(),
+        Colour::Yellow.paint(&border),
     );
 }
 
@@ -842,13 +887,13 @@ fn print_block_started(
         let mut new_block_message = String::from("");
         let border = String::from("------------------------------------------------------------------------------------------");
         let border2 = String::from("==========================================================================================");
-        let color = get_color(&*current_chain.color);
+        let chain_color = get_color(current_chain.clone());
         let last_block_time_str;
         let last_block_chain_color;
         match last_block_info {
             Some(LastBlockInfo::Completed(last_block_time, prev_block_chain_index)) => {
                 let prev_chain = get_chain_from_index(prev_block_chain_index);
-                last_block_chain_color = prev_chain.color;
+                last_block_chain_color = get_color(prev_chain.clone());
                 if last_block_time > 0 {
                     let human_time;
                     if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
@@ -860,7 +905,7 @@ fn print_block_started(
             },
             Some(LastBlockInfo::Interrupted(last_block_time, prev_block_chain_index)) => {
                 let prev_chain = get_chain_from_index(prev_block_chain_index);
-                last_block_chain_color = prev_chain.color;
+                last_block_chain_color = get_color(prev_chain.clone());
                 let human_time;
                 if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
                 let plural = match last_block_time { 1 => "", _ => "s", };
@@ -868,7 +913,7 @@ fn print_block_started(
             },
             Some(LastBlockInfo::Requeued(requeue_info, last_block_time, prev_block_chain_index)) => {
                 let prev_chain = get_chain_from_index(prev_block_chain_index);
-                last_block_chain_color = prev_chain.color;
+                last_block_chain_color = get_color(prev_chain.clone());
                 match requeue_info {
                     Some((num_times, max_times)) => {
                         if last_block_time > 0 {
@@ -894,7 +939,7 @@ fn print_block_started(
             },
             Some(LastBlockInfo::Superseded(last_block_time, prev_block_chain_index)) => {
                 let prev_chain = get_chain_from_index(prev_block_chain_index);
-                last_block_chain_color = prev_chain.color;
+                last_block_chain_color = get_color(prev_chain.clone());
                 let human_time;
                 if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
                 let plural = match last_block_time { 1 => "", _ => "s", }; 
@@ -902,7 +947,7 @@ fn print_block_started(
             },
             Some(LastBlockInfo::Forked(last_block_time, prev_block_chain_index)) => {
                 let prev_chain = get_chain_from_index(prev_block_chain_index);
-                last_block_chain_color = prev_chain.color;
+                last_block_chain_color = get_color(prev_chain.clone());
                 let human_time;
                 if CONF.show_human_readable_deadlines.unwrap_or(true) { human_time = format!(" ({})", format_timespan(last_block_time)); } else { human_time = String::from(""); }
                 let plural = match last_block_time { 1 => "", _ => "s", }; 
@@ -910,7 +955,7 @@ fn print_block_started(
             },
             _ => {
                 last_block_time_str = String::from("");
-                last_block_chain_color = current_chain.color.to_string();
+                last_block_chain_color = chain_color;
             },
         };
         /*let mut prev_block_time = 0;
@@ -929,18 +974,18 @@ fn print_block_started(
         }*/
         new_block_message.push_str(
             format!("{}{}\n  {} {} => {} | {}\n{}\n  {}       {}\n  {}          {}\n",
-                last_block_time_str.color(last_block_chain_color).bold(),
-                border2.color(color).bold(),
-                format!("{}", get_time()).white(),
-                " STARTED BLOCK".color(color),
-                format!("{}", &*current_chain.name).color(color),
-                format!("#{}", height).color(color),
+                last_block_chain_color.bold().paint(last_block_time_str),
+                chain_color.bold().paint(&border2),
+                format!("{}", get_time()),
+                chain_color.paint(" STARTED BLOCK"),
+                chain_color.paint(format!("{}", &*current_chain.name)),
+                chain_color.paint(format!("#{}", height)),
                 //prev_block_time_str.color(color).bold(),
-                border2.color(color).bold(),
-                "Total Capacity:".color(color).bold(),
-                format!("{:.4} TiB", get_total_plots_size_in_tebibytes()).color(color),
-                "Base Target:".color(color).bold(),
-                base_target.to_string().color(color),
+                chain_color.bold().paint(&border2),
+                chain_color.bold().paint("Total Capacity:"),
+                chain_color.paint(format!("{:.4} TiB", get_total_plots_size_in_tebibytes())),
+                chain_color.bold().paint("Base Target:"),
+                chain_color.paint(base_target.to_string()),
             ).as_str(),
         );
         let mut human_readable_target_deadline = String::from("");
@@ -955,16 +1000,16 @@ fn print_block_started(
                 }
                 new_block_message.push_str(
                     format!("  {}      {}\n",
-                        "Target Deadline:".color(color).bold(),
-                        format!("{}{} (Chain Config)", chain_tdl, human_readable_target_deadline).color(color),
+                        chain_color.bold().paint("Target Deadline:"),
+                        chain_color.paint(format!("{}{} (Chain Config)", chain_tdl, human_readable_target_deadline)),
                     ).as_str(),
                 );
             },
             TargetDeadlineType::Default => {
                 new_block_message.push_str(
                     format!("  {}      {}\n",
-                        "Target Deadline:".color(color).bold(),
-                        "None".color(color)
+                        chain_color.bold().paint("Target Deadline:"),
+                        chain_color.paint("None")
                     ).as_str(),
                 );
             },
@@ -974,8 +1019,8 @@ fn print_block_started(
                 }
                 new_block_message.push_str(
                     format!("  {}      {}\n",
-                        "Target Deadline:".color(color).bold(),
-                        format!("{}{} (Dynamic @ {}%)", dynamic_tdl, human_readable_target_deadline, current_chain.submit_probability.unwrap_or(95)).color(color),
+                        chain_color.bold().paint("Target Deadline:"),
+                        chain_color.paint(format!("{}{} (Dynamic @ {}%)", dynamic_tdl, human_readable_target_deadline, current_chain.submit_probability.unwrap_or(95))),
                     ).as_str(),
                 );
             },
@@ -985,41 +1030,66 @@ fn print_block_started(
                 }
                 new_block_message.push_str(
                     format!("  {}      {}\n",
-                        "Target Deadline:".color(color).bold(),
-                        format!("{}{} (Pool Maximum)", pool_tdl, human_readable_target_deadline).color(color)
+                        chain_color.bold().paint("Target Deadline:"),
+                        chain_color.paint(format!("{}{} (Pool Maximum)", pool_tdl, human_readable_target_deadline))
                     ).as_str(),
                 );
             },
             _ => {} // no point having a match for TargetDeadlineType::ConfigOverriddenByID(base_tdl, id, override_tdl), since we don't provide an ID to get_target_deadline
         };
         let net_difficulty = get_network_difficulty_for_block(base_target, 240);
-        if !is_bhd {
+        let net_difficulty_fmt = fmt_capacity(net_difficulty, None);
+        if is_bhd {
+            let bhd_net_diff = get_network_difficulty_for_block(base_target, 180);
+            let bhd_net_difficulty_fmt = fmt_capacity(bhd_net_diff, None);
             new_block_message.push_str(
                 format!("  {}   {}\n",
-                    "Network Difficulty:".color(color).bold(),
-                    format!("{} TiB", net_difficulty).color(color)
+                    chain_color.bold().paint("Network Difficulty:"),
+                    chain_color.paint(format!("{} ({})", net_difficulty_fmt, bhd_net_difficulty_fmt))
                 ).as_str(),
             );
         } else {
-            let bhd_net_diff = get_network_difficulty_for_block(base_target, 300);
             new_block_message.push_str(
                 format!("  {}   {}\n",
-                    "Network Difficulty:".color(color).bold(),
-                    format!("{} TiB (Proper for BHD = {} TiB)", net_difficulty, bhd_net_diff).color(color)
+                    chain_color.bold().paint("Network Difficulty:"),
+                    chain_color.paint(format!("{}", net_difficulty_fmt))
                 ).as_str(),
             );
         }
         new_block_message.push_str(
             format!("  {} {}\n{}",
-                "Generation Signature:".color(color).bold(),
-                gen_sig.color(color),
-                border.color(color).bold()
+                chain_color.bold().paint("Generation Signature:"),
+                chain_color.paint(gen_sig),
+                chain_color.bold().paint(border)
             ).as_str(),
         );
         let mut block_start_printed_map = BLOCK_START_PRINTED.lock().unwrap();
         block_start_printed_map.insert(chain_index, height);
         println!("{}", new_block_message);
     }
+}
+
+fn fmt_capacity(capacity: u64, num_decimals: Option<usize>) -> String {
+    let mut new_capacity = capacity as f64;
+    let mut iterations = 0u8;
+    // keep dividing the value by 1024 until it is <= 1024, keeping track of how many iterations were performed
+    loop {
+        if new_capacity > 1024f64 {
+            new_capacity /= 1024f64;
+            iterations += 1;
+        } else {
+            break;
+        }
+    }
+    let units = match iterations {
+        0u8 => "TiB",
+        1u8 => "PiB",
+        2u8 => "EiB",
+        3u8 => "ZiB", // god help us if we get to this point...
+        4u8 => "YiB",
+        _ => "?",
+    };
+    format!("{:.*} {}", num_decimals.unwrap_or(4), new_capacity, units)
 }
 
 fn print_nonce_submission(
@@ -1041,16 +1111,17 @@ fn print_nonce_submission(
 
     if actual_current_chain_index == index && actual_current_chain_height == height {
         //let scoop_num = rand::thread_rng().gen_range(0, 4097);
-        let color = get_color(&*current_chain.color);
+        let chain_color = get_color(current_chain.clone());
         let mut deadline_string = deadline.to_string();
         if crate::CONF.show_human_readable_deadlines.unwrap_or_default()
         {
             deadline_string.push_str(format!(" ({})", format_timespan(deadline)).as_str());
         }
         let deadline_color = match deadline {
-            0..=3600 => "green",
-            3601..=86400 => "yellow",
-            _ => "white",
+            0..=600 => RGB(255, 95, 0),
+            601..=3600 => Colour::Green,
+            3601..=86400 => Colour::Yellow,
+            _ => Colour::White,
         };
         // remote_addr is an endpoint, need to truncate the port and just leave the hostname/ip
         let remote_address = match CONF.show_miner_addresses.unwrap_or_default() {
@@ -1079,28 +1150,28 @@ fn print_nonce_submission(
         };
         if !id_override {
             println!("    {}{} ==> {}{} ==> {} {}\n        {}                          {}{}",
-                remote_address.color("white"),
-                user_agent.to_string().color(color).bold(),
-                "Block #".color(color).bold(),
-                height.to_string().color(color),
-                "Numeric ID:".color(color).bold(),
-                censor_account_id(account_id).color(color),
-                "Deadline:".color(color).bold(),
-                deadline_string.color(deadline_color),
-                time_since_block_started_str.color(color),
+                remote_address,
+                chain_color.bold().paint(user_agent.to_string()),
+                chain_color.bold().paint("Block #"),
+                chain_color.paint(height.to_string()),
+                chain_color.bold().paint("Numeric ID:"),
+                chain_color.paint(censor_account_id(account_id)),
+                chain_color.bold().paint("Deadline:"),
+                deadline_color.paint(deadline_string),
+                chain_color.paint(time_since_block_started_str),
             );
         } else {
             println!("    {}{} ==> {}{} ==> {} {}{}\n        {}                          {}{}",
-                remote_address.color("white"),
-                user_agent.to_string().color(color).bold(),
-                "Block #".color(color).bold(),
-                height.to_string().color(color),
-                "Numeric ID:".color(color).bold(),
-                censor_account_id(account_id).color(color),
-                format!(" [TDL: {}]", target_deadline).red(),
-                "Deadline:".color(color).bold(),
-                deadline_string.color(deadline_color),
-                time_since_block_started_str.color(color),
+                remote_address,
+                chain_color.bold().paint(user_agent.to_string()),
+                chain_color.bold().paint("Block #"),
+                chain_color.paint(height.to_string()),
+                chain_color.bold().paint("Numeric ID:"),
+                chain_color.paint(censor_account_id(account_id)),
+                Colour::Red.paint(format!(" [TDL: {}]", target_deadline)),
+                chain_color.bold().paint("Deadline:"),
+                deadline_color.paint(deadline_string),
+                chain_color.paint(time_since_block_started_str),
             );
         }
     }
@@ -1129,13 +1200,13 @@ fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confi
     let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
 
     if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
-        let color = get_color(&*current_chain.color);
+        let chain_color = get_color(current_chain.clone());
         let is_hdpool = (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some();
         let confirm_text = if is_hdpool { "Submitted:" } else { "Confirmed:" };
         println!("            {}                     {}{}",
-            confirm_text.green(),
-            deadline.to_string().color(color),
-            format!(" ({}ms)", confirmation_time_ms).color(color)
+            Colour::Green.paint(confirm_text),
+            chain_color.paint(deadline.to_string()),
+            chain_color.paint(format!(" ({}ms)", confirmation_time_ms))
         );
     }
 }
@@ -1158,27 +1229,27 @@ fn print_nonce_rejected(
 
     if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let current_chain = get_chain_from_index(chain_index);
-        let color = get_color(&*current_chain.color);
+        let chain_color = get_color(current_chain.clone());
         let rejected_text = if is_timeout { format!("Timeout ({}/{}): ", attempt_num, attempts_num) } else { format!("Rejected ({}/{}):", attempt_num, attempts_num) };
         if is_timeout {
                 println!("            {}                {}{}",
-                    rejected_text.red(),
-                    deadline.to_string().color(color),
-                    format!(" ({}ms)", rejection_time_ms).color(color)
+                    Colour::Red.paint(rejected_text),
+                    chain_color.paint(deadline.to_string()),
+                    chain_color.paint(format!(" ({}ms)", rejection_time_ms))
                 );
         } else {
             if failure_message.is_none() {
                 println!("            {}                {}{}\n              (No reason given)",
-                    rejected_text.red(),
-                    deadline.to_string().color(color),
-                    format!(" ({}ms)", rejection_time_ms).color(color)
+                    Colour::Red.paint(rejected_text),
+                    chain_color.paint(deadline.to_string()),
+                    chain_color.paint(format!(" ({}ms)", rejection_time_ms))
                 );
             } else {
                 println!("            {}                {}{}\n              ({})",
-                    rejected_text.red(),
-                    deadline.to_string().color(color),
-                    format!(" ({}ms)", rejection_time_ms).color(color),
-                    failure_message.unwrap().to_string().red(),
+                    Colour::Red.paint(rejected_text),
+                    chain_color.paint(deadline.to_string()),
+                    chain_color.paint(format!(" ({}ms)", rejection_time_ms)),
+                    Colour::Red.paint(format!("{}", failure_message.unwrap())),
                 );
             }
         }
@@ -1296,7 +1367,10 @@ fn get_chain_from_index(index: u8) -> PocChain {
         numeric_id_to_target_deadline: None,
         historical_rounds: None,
         target_deadline: None,
-        color: String::from(""),
+        color: None,
+        color_num: None,
+        color_rgb: None,
+        color_hex: None,
         get_mining_info_interval: None,
         use_dynamic_deadlines: None,
         submit_probability: None,
@@ -1477,14 +1551,14 @@ fn thread_monitor_capacity() {
         if new_plot_capacity != last_plot_capacity {
             let difference = new_plot_capacity - last_plot_capacity;
             let sign;
-            let difference_color = if difference > 0f64 { sign = "+"; "green" } else { sign = ""; "red" }; 
+            let difference_color = if difference > 0f64 { sign = "+"; Colour::Green } else { sign = ""; Colour::Red }; 
             println!("{}\n  {} {} {} {}\n{}",
-                border.green().bold(),
-                get_time().white(), 
-                "TOTAL PLOT CAPACITY IS NOW".yellow(),
-                format!("{:.4} TiB", new_plot_capacity).white(),
-                format!("({}{:.4} TiB)", sign, difference).color(difference_color),
-                border.green().bold()
+                Colour::Green.bold().paint(border),
+                get_time(), 
+                Colour::Yellow.paint("TOTAL PLOT CAPACITY IS NOW"),
+                format!("{:.4} TiB", new_plot_capacity),
+                difference_color.paint(format!("({}{:.4} TiB)", sign, difference)),
+                Colour::Green.bold().paint(border)
             );
             info!("TOTAL PLOT CAPACITY CHANGED FROM {} TiB => {} TiB ({}{} TiB)", last_plot_capacity, new_plot_capacity, sign, difference);
         }
@@ -1510,12 +1584,12 @@ fn thread_monitor_capacity() {
             if !offline_warnings.is_empty() {
                 let miners_plural = if num_offline_miners == 1 { "" } else { "S" };
                 println!("{}\n  {} {}\n{}\n{}\n{}",
-                    border.red().bold(),
-                    get_time().white(),
-                    format!("MINER{} OFFLINE!", miners_plural).red(),
-                    border.red().bold(),
-                    offline_warnings.to_string().red(),
-                    "------------------------------------------------------------------------------------------".red().bold(),
+                    Colour::Red.bold().paint(border),
+                    get_time(),
+                    Colour::Red.paint(format!("MINER{} OFFLINE!", miners_plural)),
+                    Colour::Red.bold().paint(border),
+                    Colour::Red.paint(format!("{}", offline_warnings)),
+                    Colour::Red.bold().paint("------------------------------------------------------------------------------------------"),
                 );
             }
             last_timeout_check = Local::now();

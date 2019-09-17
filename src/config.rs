@@ -1,4 +1,4 @@
-use colored::Colorize;
+use ansi_term::Colour;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
@@ -54,7 +54,17 @@ pub struct PocChain {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_deadline: Option<u64>,
 
-    pub color: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_num: Option<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_rgb: Option<(u8, u8, u8)>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_hex: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub get_mining_info_interval: Option<u8>,
@@ -279,14 +289,14 @@ pocChains:
             Ok(cfg) => Ok(cfg),
             Err(why) => {
                 Err(ArchonError::new(&format!("{} {}\n  {} {}\n  {} {} {}{}", 
-                    "ERROR".red().underline(),
+                    Colour::Red.underline().paint("ERROR"),
                     "An error was encountered while attempting to parse the config file.",
-                    "MSG".red().underline(),
-                    format!("{}", why).red(),
-                    "HELP".green().underline(),
-                    "Please check your YAML syntax (Perhaps paste it into".green(),
-                    "yamlline.com".blue(),
-                    ")".green())))
+                    Colour::Red.underline().paint("MSG"),
+                    Colour::Red.paint(format!("{}", why)),
+                    Colour::Green.underline().paint("HELP"),
+                    Colour::Green.paint("Please check your YAML syntax (Perhaps paste it into"),
+                    Colour::Blue.paint("yamlline.com"),
+                    Colour::Green.paint(")"))))
             }
         }
     }

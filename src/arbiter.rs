@@ -1,5 +1,5 @@
 use chrono::{DateTime, Local};
-use colored::Colorize;
+use ansi_term::Colour;
 use reqwest;
 use futures::sync::mpsc;
 use futures::{Future, Stream};
@@ -474,6 +474,7 @@ fn thread_get_mining_info(
             parse_result = false;
             _mining_info = MiningInfo::empty();
         }
+        let chain_color = super::get_color(chain.clone());
         if parse_result {
             if request_failure {
                 request_failure = false;
@@ -483,9 +484,9 @@ fn thread_get_mining_info(
                 );
                 num_failures_since_success = 0;
                 println!("  {} {} {}",
-                    super::get_time().white(),
-                    format!("{}", &*chain.name).color(&*chain.color),
-                    format!("Outage over, total time unavailable: {}.", outage_duration_str).green()
+                    super::get_time(),
+                    chain_color.paint(format!("{}", &*chain.name)),
+                    Colour::Green.paint(format!("Outage over, total time unavailable: {}.", outage_duration_str))
                 );
                 info!("{} - Outage over, total time unavailable: {}.", &*chain.name, outage_duration_str);
             }
@@ -518,9 +519,9 @@ fn thread_get_mining_info(
                     request_failure = true;
                     last_outage_reminder_sent = Local::now();
                     println!("  {} {} {}",
-                        super::get_time().white(),
-                        format!("{}", &*chain.name).color(&*chain.color),
-                        "Could not retrieve mining info!".red()
+                        super::get_time(),
+                        chain_color.paint(format!("{}", &*chain.name)),
+                        Colour::Red.paint("Could not retrieve mining info!")
                     );
                     info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, mining_info_response);
                 } else if num_failures_since_success > 5 {
@@ -533,9 +534,9 @@ fn thread_get_mining_info(
                         let outage_duration_str =
                             super::format_timespan(outage_duration.num_seconds() as u64);
                         println!("  {} {} {}",
-                            super::get_time().white(),
-                            format!("{} - Last: {}", &*chain.name, last_block_height).color(&*chain.color),
-                            format!("Outage continues, time unavailable so far: {}.", outage_duration_str).red()
+                            super::get_time(),
+                            chain_color.paint(format!("{} - Last: {}", &*chain.name, last_block_height)),
+                            Colour::Red.paint(format!("Outage continues, time unavailable so far: {}.", outage_duration_str))
                         );
                         info!("{} - Last: {} - Outage continues, time unavailable so far: {}", &*chain.name, last_block_height, outage_duration_str);
                     }
@@ -1158,6 +1159,7 @@ pub fn process_nonce_submission(
         };
     }
     let current_chain = super::get_chain_from_index(chain_index);
+    let chain_color = super::get_color(current_chain.clone());
     let base_target = match get_current_chain_mining_info(chain_index) {
         Some((mining_info, _)) => mining_info.base_target,
         _ => 0,
@@ -1340,12 +1342,11 @@ pub fn process_nonce_submission(
                                                 if text.contains("error reaching upstream") {
                                                     attempt += 1;
                                                     if attempt < attempts {
-                                                        let color = super::get_color(&*current_chain.color);
                                                         println!("          {}, {}:            {} {}",
-                                                            "Pool error".red(),
-                                                            "retrying".yellow(),
-                                                            adjusted_deadline.to_string().color(color),
-                                                            format!("({}/{})", attempt + 1, attempts).yellow(),
+                                                            Colour::Red.paint("Pool error"),
+                                                            Colour::Yellow.paint("retrying"),
+                                                            chain_color.paint(adjusted_deadline.to_string()),
+                                                            Colour::Yellow.paint(format!("({}/{})", attempt + 1, attempts)),
                                                         );
                                                         std::thread::sleep(std::time::Duration::from_secs(3));
                                                         continue;
@@ -1375,12 +1376,11 @@ pub fn process_nonce_submission(
                                             } else {
                                                 if attempt < attempts {
                                                     if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
-                                                        let color = super::get_color(&*current_chain.color);
                                                         println!("          {}, {}:               {} {}",
-                                                            "Timeout".red(),
-                                                            "retrying".yellow(),
-                                                            adjusted_deadline.to_string().color(color),
-                                                            format!("({}/{})", attempt + 1, attempts).yellow(),
+                                                            Colour::Red.paint("Timeout"),
+                                                            Colour::Yellow.paint("retrying"),
+                                                            chain_color.paint(adjusted_deadline.to_string()),
+                                                            Colour::Yellow.paint(format!("({}/{})", attempt + 1, attempts)),
                                                         );
                                                     } else if is_block_requeued(chain_index, height) {
                                                         // if the block is requeued, stop trying to resubmit the deadlines, we'll come back to them once higher priority blocks are completed
@@ -1422,12 +1422,11 @@ pub fn process_nonce_submission(
                                         } else {
                                             if attempt < attempts {
                                                 if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
-                                                    let color = super::get_color(&*current_chain.color);
                                                     println!("          {}, {}:               {} {}",
-                                                        "Timeout".red(),
-                                                        "retrying".yellow(),
-                                                        adjusted_deadline.to_string().color(color),
-                                                        format!("({}/{})", attempt + 1, attempts).yellow(),
+                                                        Colour::Red.paint("Timeout"),
+                                                        Colour::Yellow.paint("retrying"),
+                                                        chain_color.paint(adjusted_deadline.to_string()),
+                                                        Colour::Yellow.paint(format!("({}/{})", attempt + 1, attempts)),
                                                     );
                                                 } else if is_block_requeued(chain_index, height) {
                                                     // if the block is requeued, stop trying to resubmit the deadlines, we'll come back to them once higher priority blocks are completed
