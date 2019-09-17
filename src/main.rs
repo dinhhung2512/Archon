@@ -1131,10 +1131,7 @@ fn print_nonce_accepted(chain_index: u8, block_height: u32, deadline: u64, confi
     if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let color = get_color(&*current_chain.color);
         let is_hdpool = (current_chain.is_hdpool.unwrap_or_default() || current_chain.is_hdpool_eco.unwrap_or_default()) && current_chain.account_key.is_some();
-        let confirm_text = match is_hdpool {
-            true =>  "Submitted:",
-            false => "Confirmed:",
-        };
+        let confirm_text = if is_hdpool { "Submitted:" } else { "Confirmed:" };
         println!("            {}                     {}{}",
             confirm_text.green(),
             deadline.to_string().color(color),
@@ -1156,27 +1153,13 @@ fn print_nonce_rejected(
     // check if this is a submission for the actual current chain we're mining
     let actual_current_chain_index = arbiter::get_current_chain_index();
     let actual_current_chain_height = arbiter::get_latest_chain_info(actual_current_chain_index).0;
-    let attempt_num;
-    let attempts_num;
-    if attempts == 0 {
-        attempts_num = 1;
-    } else {
-        attempts_num = attempts;
-    }
-    if attempt == 0 {
-        attempt_num = 1;
-    } else if attempt > attempts_num {
-        attempt_num = attempts_num;
-    } else {
-        attempt_num = attempt;
-    }
+    let attempts_num = if attempts == 0 { 1 } else { attempts };
+    let attempt_num = if attempt == 0 { 1 } else if attempt > attempts_num { attempts_num } else { attempt };
+
     if actual_current_chain_index == chain_index && actual_current_chain_height == block_height {
         let current_chain = get_chain_from_index(chain_index);
         let color = get_color(&*current_chain.color);
-        let rejected_text = match is_timeout {
-            true =>  format!("Timeout ({}/{}): ", attempt_num, attempts_num),
-            false => format!("Rejected ({}/{}):", attempt_num, attempts_num),
-        };
+        let rejected_text = if is_timeout { format!("Timeout ({}/{}): ", attempt_num, attempts_num) } else { format!("Rejected ({}/{}):", attempt_num, attempts_num) };
         if is_timeout {
                 println!("            {}                {}{}",
                     rejected_text.red(),
@@ -1195,7 +1178,7 @@ fn print_nonce_rejected(
                     rejected_text.red(),
                     deadline.to_string().color(color),
                     format!(" ({}ms)", rejection_time_ms).color(color),
-                    format!("{}", failure_message.unwrap()).red(),
+                    failure_message.unwrap().to_string().red(),
                 );
             }
         }
@@ -1205,7 +1188,7 @@ fn print_nonce_rejected(
 fn get_network_difficulty_for_block(base_target: u64, block_time_seconds: u16) -> u64 {
     // BHD = 14660155037u64
     // BURST = 18325193796u64
-    return (4398046511104u64 / block_time_seconds as u64) / base_target as u64;
+    return (4398046511104u64 / u64::from(block_time_seconds)) / u64::from(base_target);
 }
 
 fn get_total_plots_size_in_tebibytes() -> f64 {
@@ -1213,7 +1196,7 @@ fn get_total_plots_size_in_tebibytes() -> f64 {
     let mut plots_capacity = 0f64;
     let current_time = Local::now();
     for (val, _, last_updated) in connected_miners_map.values() {
-        if (current_time - *last_updated).num_seconds() < CONF.miner_update_timeout.unwrap_or(1800) as i64 {
+        if (current_time - *last_updated).num_seconds() < i64::from(CONF.miner_update_timeout.unwrap_or(1800)) {
             plots_capacity += *val;
         }
     }
@@ -1226,12 +1209,7 @@ fn get_target_deadline(
     chain_index: u8,
     chain: Option<PocChain>,
 ) -> TargetDeadlineType {
-    let chain_obj;
-    if chain.is_some() {
-        chain_obj = chain.clone().unwrap();
-    } else {
-        chain_obj = get_chain_from_index(chain_index);
-    }
+    let chain_obj = if chain.is_some() { chain.clone().unwrap() } else { get_chain_from_index(chain_index) };
 
     // get max deadline from upstream if present
     let tdl_last_value;
@@ -1268,16 +1246,13 @@ fn get_target_deadline(
 
     // check if there is a target deadline specified for this account id in this chain's config, if so, override all other deadlines with it
     if account_id.is_some() {
-        match chain_obj.numeric_id_to_target_deadline {
-            Some(num_id_to_tdls_map) => {
-                for (id, overridden_tdl) in num_id_to_tdls_map {
-                    if id == account_id.unwrap() && overridden_tdl < upstream_target_deadline {
-                        target_deadline = TargetDeadlineType::ConfigOverriddenByID(overridden_tdl);
-                    }
+        if let Some(num_id_to_tdls_map) = chain_obj.numeric_id_to_target_deadline {
+            for (id, overridden_tdl) in num_id_to_tdls_map {
+                if id == account_id.unwrap() && overridden_tdl < upstream_target_deadline {
+                    target_deadline = TargetDeadlineType::ConfigOverriddenByID(overridden_tdl);
                 }
             }
-            _ => {}
-        };
+        }
     }
     return target_deadline;
 }
@@ -1287,7 +1262,7 @@ fn get_dynamic_deadline_for_block(base_target: u64, submit_probability: u16) -> 
     let plot_size_tebibytes = get_total_plots_size_in_tebibytes();
     // are we using dynamic deadlines for this chain?
     if plot_size_tebibytes > 0f64 {
-        let dynamic_target_deadline = ((720f64 * (net_diff as f64) / plot_size_tebibytes) * (submit_probability as f64 / 95f64)) as u64;
+        let dynamic_target_deadline = ((720f64 * (net_diff as f64) / plot_size_tebibytes) * (f64::from(submit_probability) / 95f64)) as u64;
         (net_diff, dynamic_target_deadline)
     } else {
         (net_diff, u64::max_value())
@@ -1450,7 +1425,7 @@ fn get_current_capacity(ip_address: u32) -> f64 {
     match connected_miners_map.get(&ip_address) {
         Some((value, _, last_updated)) => {
             // check it hasn't been more than 30 minutes since receiving an update from this miner
-            if (Local::now() - *last_updated).num_seconds() < CONF.miner_update_timeout.unwrap_or(1800) as i64 {
+            if (Local::now() - *last_updated).num_seconds() < i64::from(CONF.miner_update_timeout.unwrap_or(1800)) {
                 *value
             } else {
                 0f64
@@ -1470,19 +1445,14 @@ fn update_connected_miners(endpoint: &str, data: crate::web::MiningHeaderData) {
             break;
             }
         i += 1;
-        }
+    }
     if port_index > 0 {
         ip_address.truncate(port_index);
     }
     let ip_as_u32 = ip_to_u32(ip_address.as_str());
     let capacity_tib = data.capacity / 1024f64;
     let stored_capacity = get_current_capacity(ip_as_u32);
-    let capacity_to_store;
-    if capacity_tib > 0f64 && capacity_tib != stored_capacity {
-        capacity_to_store = capacity_tib;
-    } else {
-        capacity_to_store = stored_capacity;
-    }
+    let capacity_to_store = if capacity_tib > 0f64 && capacity_tib != stored_capacity { capacity_tib } else { stored_capacity };
     if data.capacity > 0f64 && capacity_tib != stored_capacity {
         debug!("Miner from IP {} capacity changed from {} TiB => {} TiB", ip_address, stored_capacity, capacity_tib);
     }
@@ -1507,14 +1477,7 @@ fn thread_monitor_capacity() {
         if new_plot_capacity != last_plot_capacity {
             let difference = new_plot_capacity - last_plot_capacity;
             let sign;
-            let difference_color;
-            if difference > 0f64 {
-                sign = "+";
-                difference_color = "green";
-            } else {
-                sign = "";
-                difference_color = "red";
-            }
+            let difference_color = if difference > 0f64 { sign = "+"; "green" } else { sign = ""; "red" }; 
             println!("{}\n  {} {} {} {}\n{}",
                 border.green().bold(),
                 get_time().white(), 
@@ -1535,27 +1498,23 @@ fn thread_monitor_capacity() {
             let mut num_offline_miners = 0;
             for (_, ip, last_updated) in connected_miners_map_guard.values() {
                 let time_since_last_updated = (current_time - *last_updated).num_seconds();
-                if time_since_last_updated >= (CONF.miner_update_timeout.unwrap_or(1800) / 2) as i64 {
-                    let human_readable_time;
-                    if CONF.show_human_readable_deadlines.unwrap_or_default() { human_readable_time = format!(" ({})", format_timespan(time_since_last_updated as u64)); } else {
-                        human_readable_time = String::from(""); }
-                    let new_line;
-                    if offline_warnings.len() > 0 { new_line = "\n"; } else { new_line = ""; }
+                if time_since_last_updated >= i64::from(CONF.miner_update_timeout.unwrap_or(1000) / 2) {
+                    let human_readable_time = if CONF.show_human_readable_deadlines.unwrap_or_default() { format!(" ({})", format_timespan(time_since_last_updated as u64)) } else { String::from("") };
+                    let new_line = if !offline_warnings.is_empty() { "\n" } else { "" };
                     warn!("MINER OFFLINE - Miner @ IP {} last seen {} seconds{} ago.", ip, time_since_last_updated, &human_readable_time);
                     offline_warnings.push_str(format!("{}  - {} => Last seen {} seconds{} ago.", new_line, ip, time_since_last_updated, human_readable_time).as_str());
                     num_offline_miners += 1;
                 }
             }
             drop(connected_miners_map_guard);
-            if offline_warnings.len() > 0 {
-                let miners_plural;
-                if num_offline_miners == 1 { miners_plural = ""; } else { miners_plural = "S"; }
+            if !offline_warnings.is_empty() {
+                let miners_plural = if num_offline_miners == 1 { "" } else { "S" };
                 println!("{}\n  {} {}\n{}\n{}\n{}",
                     border.red().bold(),
                     get_time().white(),
                     format!("MINER{} OFFLINE!", miners_plural).red(),
                     border.red().bold(),
-                    format!("{}", offline_warnings).red(),
+                    offline_warnings.to_string().red(),
                     "------------------------------------------------------------------------------------------".red().bold(),
                 );
             }
