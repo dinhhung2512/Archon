@@ -1332,7 +1332,7 @@ fn get_target_deadline(
     // calculate the dynamic deadline
     if chain_obj.clone().use_dynamic_deadlines.unwrap_or_default() {
         let (_, dynamic_target_deadline) = get_dynamic_deadline_for_block(base_target, chain_obj.clone().submit_probability.unwrap_or(95));
-        if dynamic_target_deadline < upstream_target_deadline {
+        if dynamic_target_deadline < upstream_target_deadline && dynamic_target_deadline < chain_obj.clone().target_deadline.unwrap_or(u64::max_value()) {
             target_deadline = TargetDeadlineType::Dynamic(dynamic_target_deadline);
         }
     }
