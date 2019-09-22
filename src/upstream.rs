@@ -37,11 +37,11 @@ impl MiningInfo {
     pub fn from_json(json: &str) -> (bool, MiningInfo) {
         match serde_json::from_str(json) {
             Ok(mi) => {
-                return (true, mi);
+                (true, mi)
             }
             Err(why) => {
                 warn!("MiningInfo::from_json({}): Failed parse: {:?}", json, why);
-                return (false, MiningInfo::empty());
+                (false, MiningInfo::empty())
             }
         }
     }
@@ -63,13 +63,13 @@ pub struct SubmitNonceInfo {
 
 impl SubmitNonceInfo {
     pub fn empty() -> SubmitNonceInfo {
-        return SubmitNonceInfo {
+        SubmitNonceInfo {
             account_id: 0u64,
             nonce: 0u64,
             secret_phrase: None,
             blockheight: 0u32,
             deadline: 0u32,
-        };
+        }
     }
 
     pub fn to_json(&self) -> String {
@@ -79,10 +79,10 @@ impl SubmitNonceInfo {
     pub fn from_json(json: &str) -> (bool, SubmitNonceInfo) {
         match serde_json::from_str(json) {
             Ok(sni) => {
-                return (true, sni);
+                (true, sni)
             }
             Err(_) => {
-                return (false, SubmitNonceInfo::empty());
+                (false, SubmitNonceInfo::empty())
             }
         }
     }

@@ -28,8 +28,8 @@ use crate::config::PocChain;
 use crate::upstream::MiningInfo;
 use arbiter::HDPoolSubmitNonceInfo;
 
-const APP_NAME: &'static str = env!("CARGO_PKG_NAME");
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const APP_NAME: &str = env!("CARGO_PKG_NAME");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug)]
 enum TargetDeadlineType {
@@ -438,7 +438,7 @@ fn main() {
         }
 
         // start mining info polling thread
-        println!("  {} {}", get_time(), "Starting upstream mining info polling thread.");
+        println!("  {} Starting upstream mining info polling thread.", get_time());
         let mi_thread = thread::spawn(move || {
             arbiter::thread_arbitrate();
         });
@@ -530,21 +530,17 @@ fn setup_logging() -> (String, bool, String, bool) {
             }
             if std::fs::rename(format!("logs/{}.log", APP_NAME), format!("logs/{}.1.log", APP_NAME)).is_ok() {}
         }
-        match fern::log_file(format!("logs/{}.log", APP_NAME)) {
-            Ok(log_file) => {
-                match fern::Dispatch::new()
-                    .format(move |out, message, record| {
-                    out.finish(format_args!(
-                        "{time}   [{level:level_width$}] {target:target_width$}\t> {msg}",
-                        time = Local::now().format("%Y-%m-%d %H:%M:%S"),
-                        level = record.level(),
-                        target = record.target(),
-                        msg = message,
-                        level_width = 5,
-                        target_width = 30
-                    ))
-                })
-                .level(dependency_log_level)
+        if let Ok(log_file) = fern::log_file(format!("logs/{}.log", APP_NAME)) {
+            if let Ok(_) = fern::Dispatch::new().format(move |out, message, record| {
+                out.finish(format_args!(
+                    "{time}   [{level:level_width$}] {target:target_width$}\t> {msg}",
+                    time = Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    level = record.level(),
+                    target = record.target(),
+                    msg = message,
+                    level_width = 5,
+                    target_width = 30))
+                }).level(dependency_log_level)
                 .level_for("archon", log_level)
                 .level_for("archon::web", log_level)
                 .level_for("archon::arbiter", log_level)
@@ -552,13 +548,8 @@ fn setup_logging() -> (String, bool, String, bool) {
                 .level_for("archon::config", log_level)
                 .level_for("archon::error", log_level)
                 .chain(log_file)
-                .apply() {
-                    Ok(_) => {},
-                    Err(_) => {},
-                };
-            },
-            Err(_) => {}
-        }
+                .apply() {};
+        };
         (console_logging_message, logging_level_warning, dependency_console_logging_message, dep_logging_level_warning)
     } else {
         (console_logging_message, logging_level_warning, String::from(""), false)
@@ -583,8 +574,8 @@ fn thread_check_latest_githib_version() {
             Ok(data) => {
                 let mut tag_name_string = data[0]["tag_name"].to_string().clone();
                 tag_name_string = tag_name_string.trim_matches('"').to_string();
-                if tag_name_string.starts_with("v") {
-                    tag_name_string = tag_name_string.trim_start_matches("v").to_string();
+                if tag_name_string.starts_with('v') {
+                    tag_name_string = tag_name_string.trim_start_matches('v').to_string();
                 }
                 match Version::parse(tag_name_string.as_str()) {
                     Ok(latest) => {
@@ -626,7 +617,7 @@ fn uppercase_first(s: &str) -> String {
     }
 }
 
-fn get_color(chain: PocChain) -> Colour {
+/*fn get_color(chain: PocChain) -> Colour {
     // if using poc chain colors is disabled in config, return white here
     if !crate::CONF.use_poc_chain_colors.unwrap_or(true) {
         return Colour::White;
@@ -659,12 +650,46 @@ fn get_color(chain: PocChain) -> Colour {
         return RGB(r, g, b);
     }
     return RGB(255, 255, 255);
+}*/
+
+/* I'm not entirely sure this has been modified properly, so I'm leaving the original commented out
+   above, just in case this doesn't really work well. */
+fn get_color(chain: PocChain) -> Colour {
+    // if using poc chain colors is disabled in config, return white here
+    if !crate::CONF.use_poc_chain_colors.unwrap_or(true) {
+        Colour::White
+    } else {
+        if let Some(col) = chain.color {
+            match col.to_lowercase().as_str() {
+                "black" => Colour::Black,
+                "red" => Colour::Red,
+                "green" => Colour::Green,
+                "yellow" => Colour::Yellow,
+                "blue" => Colour::Blue,
+                "magenta" => Colour::Purple,
+                "purple" => Colour::Purple,
+                "cyan" => Colour::Cyan,
+                "white" => Colour::White,
+                _ => Colour::RGB { 0: 255, 1: 255, 2: 255 }
+            }
+        } else if let Some(col_num) = chain.color_num {
+            Colour::Fixed { 0: col_num }
+        } else if let Some(col_rgb) = chain.color_rgb {
+            Colour::RGB { 0: col_rgb.0, 1: col_rgb.1, 2: col_rgb.2 }
+        } else if let Some(col_hex) = chain.color_hex {
+            // get values for red, green, and blue
+            let (r, g, b) = hex_to_rgb(col_hex);
+            Colour::RGB { 0: r, 1: g, 2: b }
+        } else {
+            Colour::RGB {0: 255, 1: 255, 2: 255 }
+        }
+    }
 }
 
 fn hex_to_rgb(hex: String) -> (u8, u8, u8) {
     if hex.len() == 6 || hex.len() == 7 {
         let mut hex_str = hex.clone();
-        hex_str.retain(|c| is_hex_char(c));
+        hex_str.retain(is_hex_char);
         if hex_str.len() == 6 {
             let mut i = 0;
             let mut r = 0u8;
@@ -845,32 +870,21 @@ fn query_create_default_config() {
         Colour::Cyan.paint("Type \"y\" and <Enter> to create the file, or just hit <Enter> to exit:")
     );
     let mut resp = String::new();
-    match std::io::stdin().read_line(&mut resp) {
-        Ok(_) => {
-            if resp.trim().to_lowercase() == "y" {
-                let default_config_yaml = Config::create_default();
-                //let default_config_yaml = Config::to_yaml(&default_config);
-                match File::create("archon.yaml") {
-                    Ok(mut file) => {
-                        use std::io::Write;
-                        match file.write_all(&default_config_yaml.as_bytes()) {
-                            Ok(_) => {
-                                println!(
-                                    "  {}",
-                                    Colour::Green.paint("Default config file saved to archon.yaml")
-                                );
-                            }
-                            Err(_) => {}
-                        };
-                    }
-                    Err(err) => {
-                        println!("  {}", Colour::Red.paint(format!("Error saving config file: {}", err)))
-                    }
-                };
-            }
-        }
-        Err(_) => {
-            return;
+    if let Ok(_) = std::io::stdin().read_line(&mut resp) {
+        if resp.trim().to_lowercase() == "y" {
+            let default_config_yaml = Config::create_default();
+            //let default_config_yaml = Config::to_yaml(&default_config);
+            match File::create("archon.yaml") {
+                Ok(mut file) => {
+                    use std::io::Write;
+                    if let Ok(_) = file.write_all(&default_config_yaml.as_bytes()) {
+                        println!("  {}", Colour::Green.paint("Default config file saved to archon.yaml"));
+                    };
+                }
+                Err(err) => {
+                    println!("  {}", Colour::Red.paint(format!("Error saving config file: {}", err)));
+                }
+            };
         }
     };
 }
@@ -1260,7 +1274,7 @@ fn print_nonce_rejected(
                     chain_color.paint(format!(" ({}ms)", rejection_time_ms))
                 );
         } else {
-            if failure_message.is_none() {
+            if let None = failure_message {
                 println!("            {}                {}{}\n              (No reason given)",
                     Colour::Red.paint(rejected_text),
                     chain_color.paint(deadline.to_string()),
@@ -1271,7 +1285,7 @@ fn print_nonce_rejected(
                     Colour::Red.paint(rejected_text),
                     chain_color.paint(deadline.to_string()),
                     chain_color.paint(format!(" ({}ms)", rejection_time_ms)),
-                    Colour::Red.paint(format!("{}", failure_message.unwrap())),
+                    Colour::Red.paint(failure_message.unwrap().to_string()),
                 );
             }
         }
@@ -1281,7 +1295,7 @@ fn print_nonce_rejected(
 fn get_network_difficulty_for_block(base_target: u64, block_time_seconds: u16) -> u64 {
     // BHD = 14660155037u64
     // BURST = 18325193796u64
-    return (4398046511104u64 / u64::from(block_time_seconds)) / u64::from(base_target);
+    return (4398046511104u64 / u64::from(block_time_seconds)) / base_target;
 }
 
 fn get_total_plots_size_in_tebibytes() -> f64 {

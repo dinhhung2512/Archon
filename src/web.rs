@@ -46,10 +46,10 @@ impl SubmitNonceResponse {
     pub fn from_json(json: &str) -> (bool, SubmitNonceResponse) {
         match serde_json::from_str(json) {
             Ok(snr) => {
-                return (true, snr);
+                (true, snr)
             }
             Err(_) => {
-                return (false, SubmitNonceResponse::empty());
+                (false, SubmitNonceResponse::empty())
             }
         }
     }
@@ -64,19 +64,19 @@ pub struct SubmitNonceErrorResponse {
 
 impl SubmitNonceErrorResponse {
     pub fn empty() -> SubmitNonceErrorResponse {
-        return SubmitNonceErrorResponse {
+        SubmitNonceErrorResponse {
             error_code: "".to_string(),
             error_description: "".to_string(),
-        };
+        }
     }
 
     pub fn from_json(json: &str) -> (bool, SubmitNonceErrorResponse) {
         match serde_json::from_str(json) {
             Ok(sner) => {
-                return (true, sner);
+                (true, sner)
             },
             _ => {
-                return (false, SubmitNonceErrorResponse::empty());
+                (false, SubmitNonceErrorResponse::empty())
             }
         }
     }
@@ -85,10 +85,10 @@ impl SubmitNonceErrorResponse {
 fn try_get_query_string_value(req: &HttpRequest, name: &str) -> (bool, String) {
     match req.query().get(name) {
         Some(val) => {
-            return (true, val.clone());
+            (true, val.clone())
         }
         _ => {
-            return (false, "".to_string());
+            (false, "".to_string())
         }
     }
 }
@@ -112,13 +112,13 @@ pub struct SubmitNonceInfo {
 
 impl SubmitNonceInfo {
     pub fn from(height: Option<u32>, id: u64, nonce: u64, deadline: u64, passphrase: Option<String>) -> SubmitNonceInfo {
-        return SubmitNonceInfo {
+        SubmitNonceInfo {
             block_height: height,
             account_id: id,
-            nonce: nonce,
-            deadline: deadline,
+            nonce,
+            deadline,
             secret_phrase: passphrase
-        };
+        }
     }
 }
 

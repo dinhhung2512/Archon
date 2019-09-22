@@ -65,10 +65,8 @@ fn create_chain_nonce_submission_client(chain_index: u8) {
             )),
         );
         default_headers.insert("X-Miner", get_header_value(app_name_ver.clone()));
-    } else {
-        if chain.foxypool_payout_address.is_some() && chain.account_key.is_none() {
-            default_headers.insert("X-Account", get_header_value(chain.foxypool_payout_address.unwrap()));
-        }
+    } else if chain.foxypool_payout_address.is_some() && chain.account_key.is_none() {
+        default_headers.insert("X-Account", get_header_value(chain.foxypool_payout_address.unwrap()));
     }
     let mut chain_nonce_submission_clients = crate::CHAIN_NONCE_SUBMISSION_CLIENTS.lock().unwrap();
     let timeout = match chain.timeout.unwrap_or(crate::CONF.timeout.unwrap_or(5)) as u64 {
@@ -343,8 +341,8 @@ fn thread_hdpool_websocket(
                 Ok(())
             });
 
-            ws_writer.map(|_| ()).map_err(|e| { warn!("HDPool WebSocket Failure: {:?}", e); () })
-                .select(ws_reader.map(|_| ()).map_err(|e| { warn!("HDPool WebSocket Failure: {:?}", e); () }))
+            ws_writer.map(|_| ()).map_err(|e| { warn!("HDPool WebSocket Failure: {:?}", e); })
+                .select(ws_reader.map(|_| ()).map_err(|e| { warn!("HDPool WebSocket Failure: {:?}", e); }))
                 .then(|_| Ok(()))
 
         }).map_err(|e| {
@@ -425,7 +423,7 @@ fn thread_get_mining_info(
                 }
             },
             false => {
-                let mut url = String::from(chain.clone().url);
+                let mut url = chain.clone().url;
                 if chain.is_boomcoin.unwrap_or(false) {
                     url.push_str("/boom?requestType=getMiningInfo");
                 } else {
@@ -451,7 +449,7 @@ fn thread_get_mining_info(
                                 super::VERSION
                             )
                         )
-                        .header("X-Account", format!("{}", chain.account_key.clone().unwrap_or(String::from(""))))
+                        .header("X-Account", format!("{}", chain.account_key.clone().unwrap_or_else(|| String::from(""))))
                         .header("X-MinerName", format!("{}{} v{}", miner_name, super::uppercase_first(super::APP_NAME), super::VERSION))
                         .header("X-Capacity", format!("{}", super::get_total_plots_size_in_tebibytes() * 1024f64))
                         .send() {
@@ -520,7 +518,7 @@ fn thread_get_mining_info(
                 num_failures_since_success = 0;
                 println!("  {} {} {}",
                     super::get_time(),
-                    chain_color.paint(format!("{}", &*chain.name)),
+                    chain_color.paint(&*chain.name.to_string()),
                     Colour::Green.paint(format!("Outage over, total time unavailable: {}.", outage_duration_str))
                 );
                 info!("{} - Outage over, total time unavailable: {}.", &*chain.name, outage_duration_str);
@@ -542,10 +540,7 @@ fn thread_get_mining_info(
                     mining_info: _mining_info.clone(),
                     chain: chain.clone(),
                 };
-                match sender.send(_mining_info_polling_result) {
-                    Ok(_) => {}
-                    Err(_) => {}
-                }
+                if let Ok(_) = sender.send(_mining_info_polling_result) {};
             }
             drop(_mining_info);
         } else {
@@ -555,7 +550,7 @@ fn thread_get_mining_info(
                     last_outage_reminder_sent = Local::now();
                     println!("  {} {} {}",
                         super::get_time(),
-                        chain_color.paint(format!("{}", &*chain.name)),
+                        chain_color.paint(&*chain.name.to_string()),
                         Colour::Red.paint("Could not retrieve mining info!")
                     );
                     info!("{} ({}) - Error getting mining info! Outage started: {}", &*chain.name, &*chain.url, mining_info_response);
@@ -603,7 +598,7 @@ fn update_chain_info(mining_info_polling_result: &MiningInfoPollingResult) {
 
 // wrapper function to safely retrieve the current chain index from the mutex without holding a lock
 pub fn get_current_chain_index() -> u8 {
-    return *crate::CURRENT_CHAIN_INDEX.lock().unwrap();
+    *crate::CURRENT_CHAIN_INDEX.lock().unwrap()
 }
 
 fn requeue_forked_block(index: u8, height: u32, time: DateTime<Local>) {
@@ -777,14 +772,14 @@ fn has_grace_period_elapsed() -> bool {
     if chain_queue_status_map.len() > 0 {
         match chain_queue_status_map.get(&current_chain_index) {
             Some((_, start_time)) => {
-                return (Local::now() - *start_time) >= grace_period;
+                (Local::now() - *start_time) >= grace_period
             }
             None => {
-                return false;
+                false
             }
-        };
+        }
     } else {
-        return true; // force starting a block if no blocks have been started
+        true // force starting a block if no blocks have been started
     }
     }
 
@@ -798,10 +793,10 @@ pub fn get_time_since_block_start(height: u32) -> u64 {
                     return (Local::now() - *start_time).num_seconds() as u64;
                 },
                 _ => return 0u64,
-            };
+            }
         }
     }
-    return 0u64;
+    0u64
 }
 
 fn get_time_since_block_start_ms(height: u32) -> u64 {
@@ -814,22 +809,22 @@ fn get_time_since_block_start_ms(height: u32) -> u64 {
                     return (Local::now() - *start_time).num_milliseconds() as u64;
                     },
                 _ => return 0u64,
-            };
+            }
         }
     }
-    return 0u64;
+    0u64
 }
 
 fn get_queued_chain_info(index: u8) -> (u32, DateTime<Local>) {
     let chain_queue_status_map = crate::CHAIN_QUEUE_STATUS.lock().unwrap();
     match chain_queue_status_map.get(&index) {
         Some((block_height, block_time)) => {
-            return (*block_height, *block_time);
+            (*block_height, *block_time)
         }
         None => {
-            return (0u32, Local::now());
+            (0u32, Local::now())
         }
-    };
+    }
 }
 
 fn get_num_times_requeued(index: u8, height: u32) -> u8 {
@@ -850,22 +845,22 @@ pub fn get_latest_chain_info(index: u8) -> (u32, DateTime<Local>) {
     let chain_mining_infos_map = crate::CHAIN_MINING_INFOS.lock().unwrap();
     match chain_mining_infos_map.get(&index) {
         Some((mining_info, block_time)) => {
-            return (mining_info.height, *block_time);
+            (mining_info.height, *block_time)
         }
         None => {
-            return (0u32, Local::now());
+            (0u32, Local::now())
         }
-    };
+    }
 }
 
 pub fn get_current_chain_mining_info(index: u8) -> Option<(MiningInfo, DateTime<Local>)> {
     let chain_mining_infos_map = crate::CHAIN_MINING_INFOS.lock().unwrap();
     match chain_mining_infos_map.get(&index) {
         Some((mining_info, block_time)) => {
-            return Some((mining_info.clone(), *block_time));
+            Some((mining_info.clone(), *block_time))
         }
         None => {
-            return None;
+            None
         }
     }
 }
@@ -887,7 +882,7 @@ pub fn get_chain_index_from_height(height: u32) -> (bool, u8) {
     }
     let current_chain_index = get_current_chain_index();
     trace!("Couldn't match Block #{} to a chain, using current chain index ({})", height, current_chain_index);
-    return (false, current_chain_index);
+    (false, current_chain_index)
 }
 
 // indicates state of queue
@@ -930,11 +925,11 @@ fn any_blocks_queued() -> (bool, i8, u8) {
                 }
             }
             if highest_priority < current_chain.priority {
-                return (true, 1, highest_priority_chain_index);
+                (true, 1, highest_priority_chain_index)
             } else if highest_priority == current_chain.priority {
-                return (true, 0, highest_priority_chain_index);
+                (true, 0, highest_priority_chain_index)
             } else {
-                return (true, -1, highest_priority_chain_index);
+                (true, -1, highest_priority_chain_index)
             }
         } else {
             // FIFO mode
@@ -1314,9 +1309,9 @@ pub fn process_nonce_submission(
                                     trace!("HDP-WS - Send DL to MPMC:\n    ID={} Height={} Nonce={} DL={} UDL={}", account_id, height, nonce, adjusted_deadline, unadjusted_deadline);
                                     let (hdp_submit_response_sender, hdp_submit_response_receiver) = crossbeam::channel::unbounded();
                                     match sender.send(HDPoolSubmitNonceInfo { 
-                                        account_id: account_id,
-                                        height: height,
-                                        nonce: nonce,
+                                        account_id,
+                                        height,
+                                        nonce,
                                         deadline_unadjusted: unadjusted_deadline,
                                         deadline_adjusted: adjusted_deadline,
                                         notify_response_sender: hdp_submit_response_sender.clone(),
