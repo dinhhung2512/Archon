@@ -243,7 +243,7 @@ pocChains:
 # BHD via HDPool (Direct - no other applications needed)
   - name: BTCHD - HDPool [Direct]
     priority: 0
-    colorHex: "\#F4AA1C"
+    colorHex: '#F4AA1C'
   # Your HDPool account key goes here:
     accountKey: abcdefg-abcdefg-abcdefg-abcdefg
     isHdpool: true
@@ -253,7 +253,7 @@ pocChains:
 # LHD via HDPool ECO (Direct - no other applications needed)
   - name: LTCHD - HDPool [Direct]
     priority: 1
-    colorHex: "\#05aba4"
+    colorHex: '#05aba4'
   # Your HDPool account key goes here:
     accountKey: abcdefg-abcdefg-abcdefg-abcdefg
     isHdpoolEco: true
@@ -264,14 +264,14 @@ pocChains:
   - name: BOOM - VLP [Pool]
     priority: 2
     url: "http://boom.voiplanparty.com"
-    colorHex: "\#aaaaaa"
+    colorHex: '#aaaaaa'
     isPool: true
 
 # BURST via VLP pool (http://voiplanparty.com)
   - name: BURST - VLP [Pool]
     priority: 3
     url: "http://voiplanparty.com:8124"
-    colorHex: "\#00579D"
+    colorHex: '#00579D'
     isPool: true"#.to_string();
         }
 

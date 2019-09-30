@@ -1,6 +1,6 @@
 #![feature(vec_remove_item)]
 
-use ansi_term::{Colour, Colour::RGB, Colour::Fixed};
+use ansi_term::{Colour, Colour::RGB};
 use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::fs::File;
